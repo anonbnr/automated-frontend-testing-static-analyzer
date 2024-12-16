@@ -1,0 +1,381 @@
+{
+  "nodes": [
+    {
+      "id": "/posts",
+      "type": "route"
+    },
+    {
+      "id": "/new-post",
+      "type": "route"
+    },
+    {
+      "id": "/users",
+      "type": "route"
+    },
+    {
+      "id": "/new-user",
+      "type": "route"
+    },
+    {
+      "id": "/user-search",
+      "type": "route"
+    },
+    {
+      "id": "/date-time-form",
+      "type": "route"
+    },
+    {
+      "id": "form__dateTimeForm__7e674181-6e5e-434b-a857-80cfd2ecfe11",
+      "type": "form"
+    },
+    {
+      "id": "input__datetime__ec97a8ee-f363-40dc-8818-7e5803d88223",
+      "type": "input"
+    },
+    {
+      "id": "input__time__d8064646-3e50-4d7a-90db-5d0da1a71d7c",
+      "type": "input"
+    },
+    {
+      "id": "input__month__e02a7e6b-724f-4133-936f-fcd06a32abbf",
+      "type": "input"
+    },
+    {
+      "id": "input__week__a25029fd-7a12-48a0-a829-b196cc8abc8b",
+      "type": "input"
+    },
+    {
+      "id": "button__update_values__1ad79b07-aedc-481f-bf9d-0592f9cc7529",
+      "type": "button"
+    },
+    {
+      "id": "a__posts__5d85a010-f4bc-4a8e-9bc3-147d17c4e2b5",
+      "type": "a"
+    },
+    {
+      "id": "a__new_post__3ba46b1f-d118-4f30-bf8d-11e62d3232aa",
+      "type": "a"
+    },
+    {
+      "id": "a__users__8ddadec4-282e-40d6-a46a-209777c94737",
+      "type": "a"
+    },
+    {
+      "id": "a__new_user__a7892dcd-0e84-4c6e-ba81-bea6d5fc031f",
+      "type": "a"
+    },
+    {
+      "id": "a__user_search__9a8765d4-04ed-45a4-b31e-f017479f221c",
+      "type": "a"
+    },
+    {
+      "id": "a__date_time_form__c3e31e0f-39af-4148-ad89-daa10dcbed5a",
+      "type": "a"
+    },
+    {
+      "id": "form__postForm__618c78ac-7754-4955-b5be-aa80c911dcf6",
+      "type": "form"
+    },
+    {
+      "id": "title",
+      "type": "input"
+    },
+    {
+      "id": "content",
+      "type": "input"
+    },
+    {
+      "id": "button__create_post__9d7cd74c-b88e-4995-b7b2-2beea1d7aa55",
+      "type": "button"
+    },
+    {
+      "id": "form__userForm__b9f8eb7e-8732-4619-aaf4-33503f04878a",
+      "type": "form"
+    },
+    {
+      "id": "firstName",
+      "type": "input"
+    },
+    {
+      "id": "lastName",
+      "type": "input"
+    },
+    {
+      "id": "gender1",
+      "type": "input"
+    },
+    {
+      "id": "gender2",
+      "type": "input"
+    },
+    {
+      "id": "gender3",
+      "type": "input"
+    },
+    {
+      "id": "email",
+      "type": "input"
+    },
+    {
+      "id": "password",
+      "type": "input"
+    },
+    {
+      "id": "birthday",
+      "type": "input"
+    },
+    {
+      "id": "telephone",
+      "type": "input"
+    },
+    {
+      "id": "country",
+      "type": "select"
+    },
+    {
+      "id": "bio",
+      "type": "textarea"
+    },
+    {
+      "id": "favoriteNumber",
+      "type": "input"
+    },
+    {
+      "id": "favoriteColor",
+      "type": "input"
+    },
+    {
+      "id": "agreementLevel",
+      "type": "input"
+    },
+    {
+      "id": "avatarImage",
+      "type": "input"
+    },
+    {
+      "id": "newsletter",
+      "type": "input"
+    },
+    {
+      "id": "button__create_user__ce77925a-6fc6-476c-8b16-97cd4073d035",
+      "type": "button"
+    },
+    {
+      "id": "button__love_it!__bf001cf3-cd4e-4426-9cc2-9e33a8cd7351",
+      "type": "button"
+    },
+    {
+      "id": "button__don't_love_it!__13bb8f78-e421-48df-a424-b37a7e2848be",
+      "type": "button"
+    },
+    {
+      "id": "button__delete__e236dcf3-932f-4dd1-b0f5-5735fc96dbda",
+      "type": "button"
+    },
+    {
+      "id": "form__searchForm__6a2a7753-64f7-44b0-ba52-93d1a85fab37",
+      "type": "form"
+    },
+    {
+      "id": "input__user_search__cc1e21cc-ab18-4099-8a67-90fabb4f8fce",
+      "type": "input"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "/",
+      "to": "posts",
+      "event": "redirect"
+    },
+    {
+      "from": "/date-time-form",
+      "to": "form__dateTimeForm__7e674181-6e5e-434b-a857-80cfd2ecfe11",
+      "event": "contains"
+    },
+    {
+      "from": "/date-time-form",
+      "to": "input__datetime__ec97a8ee-f363-40dc-8818-7e5803d88223",
+      "event": "contains"
+    },
+    {
+      "from": "/date-time-form",
+      "to": "input__time__d8064646-3e50-4d7a-90db-5d0da1a71d7c",
+      "event": "contains"
+    },
+    {
+      "from": "/date-time-form",
+      "to": "input__month__e02a7e6b-724f-4133-936f-fcd06a32abbf",
+      "event": "contains"
+    },
+    {
+      "from": "/date-time-form",
+      "to": "input__week__a25029fd-7a12-48a0-a829-b196cc8abc8b",
+      "event": "contains"
+    },
+    {
+      "from": "/date-time-form",
+      "to": "button__update_values__1ad79b07-aedc-481f-bf9d-0592f9cc7529",
+      "event": "contains"
+    },
+    {
+      "from": "a__posts__5d85a010-f4bc-4a8e-9bc3-147d17c4e2b5",
+      "to": "/posts",
+      "event": "routerLink"
+    },
+    {
+      "from": "a__new_post__3ba46b1f-d118-4f30-bf8d-11e62d3232aa",
+      "to": "/new-post",
+      "event": "routerLink"
+    },
+    {
+      "from": "a__users__8ddadec4-282e-40d6-a46a-209777c94737",
+      "to": "/users",
+      "event": "routerLink"
+    },
+    {
+      "from": "a__new_user__a7892dcd-0e84-4c6e-ba81-bea6d5fc031f",
+      "to": "/new-user",
+      "event": "routerLink"
+    },
+    {
+      "from": "a__user_search__9a8765d4-04ed-45a4-b31e-f017479f221c",
+      "to": "/user-search",
+      "event": "routerLink"
+    },
+    {
+      "from": "a__date_time_form__c3e31e0f-39af-4148-ad89-daa10dcbed5a",
+      "to": "/date-time-form",
+      "event": "routerLink"
+    },
+    {
+      "from": "/new-post",
+      "to": "form__postForm__618c78ac-7754-4955-b5be-aa80c911dcf6",
+      "event": "contains"
+    },
+    {
+      "from": "form__postForm__618c78ac-7754-4955-b5be-aa80c911dcf6",
+      "to": "/posts",
+      "event": "ngSubmit"
+    },
+    {
+      "from": "/new-post",
+      "to": "title",
+      "event": "contains"
+    },
+    {
+      "from": "/new-post",
+      "to": "content",
+      "event": "contains"
+    },
+    {
+      "from": "/new-post",
+      "to": "button__create_post__9d7cd74c-b88e-4995-b7b2-2beea1d7aa55",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "form__userForm__b9f8eb7e-8732-4619-aaf4-33503f04878a",
+      "event": "contains"
+    },
+    {
+      "from": "form__userForm__b9f8eb7e-8732-4619-aaf4-33503f04878a",
+      "to": "/users",
+      "event": "ngSubmit"
+    },
+    {
+      "from": "/new-user",
+      "to": "firstName",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "lastName",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "gender1",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "gender2",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "gender3",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "email",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "password",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "birthday",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "telephone",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "country",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "bio",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "favoriteNumber",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "favoriteColor",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "agreementLevel",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "avatarImage",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "newsletter",
+      "event": "contains"
+    },
+    {
+      "from": "/new-user",
+      "to": "button__create_user__ce77925a-6fc6-476c-8b16-97cd4073d035",
+      "event": "contains"
+    },
+    {
+      "from": "/user-search",
+      "to": "form__searchForm__6a2a7753-64f7-44b0-ba52-93d1a85fab37",
+      "event": "contains"
+    },
+    {
+      "from": "/user-search",
+      "to": "input__user_search__cc1e21cc-ab18-4099-8a67-90fabb4f8fce",
+      "event": "contains"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# Node.js dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+
+# Temporary files
+*.log
+*.tmp
+
+# Operating system-specific files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Environment files
+.env

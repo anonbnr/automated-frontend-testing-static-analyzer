@@ -40,7 +40,7 @@ tsconfig.json                 # TypeScript configuration
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/static-analyzer.git
+   git clone https://github.com/anonbnr/static-analyzer.git
    cd static-analyzer
    ```
 2. Install dependencies:

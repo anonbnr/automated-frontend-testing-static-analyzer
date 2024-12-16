@@ -1,5 +1,5 @@
 {
-  "name": "static-analyzer",
+  "name": "automated-frontend-testing-static-analyzer",
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",

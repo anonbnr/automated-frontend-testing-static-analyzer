@@ -1,5 +1,5 @@
 import * as ts from 'ts-morph';
-import { RouteMap } from '../models/navigation-graph.js';
+import { RouteMap } from '../models/route-info.js';
 
 export class RouteAnalyzer {
     private routeVariableNames: string[];

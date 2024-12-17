@@ -1,98 +1,109 @@
-import { NavigationGraph } from "../models/navigation-graph.js";
-import { WidgetInfo } from "../models/widget-info.js";
+import { Node, NavigationGraph } from "../models/navigation-graph.js";
+import { RouteMap } from "../models/route-info.js";
+import { WidgetEventMap, WidgetInfo } from "../models/widget-info.js";
 
 export class NavigationGraphBuilder {
-    private graph: NavigationGraph;
+    private graph: NavigationGraph = { nodes: [], transitions: [] };
 
-    constructor() {
-        this.graph = { nodes: [], transitions: [] };
+    getGraph(): NavigationGraph {
+        return this.graph;
     }
 
-    async addRoute(route: string): Promise<void> {
+    buildRoutes(routeMap: RouteMap): void {
+        for (const { route } of routeMap.components) {
+            this.addRoute(`/${route}`);
+            console.log(`Route node added: /${route}`); // Debug log
+        }
+
+        for (const { route, redirectTo } of routeMap.redirections) {
+            this.addRouteRedirect(`/${route}`, `/${redirectTo}`);
+            console.log(`redirection transition added: /${route} -> /${redirectTo}`); // Debug log
+        }
+    }
+
+    private addRoute(route: string): void {
         this.graph.nodes.push({ id: route, type: 'route' });
     }
 
-    async addWidgets(
+    private addRouteRedirect(from: string, to: string): void {
+        this.graph.transitions.push({
+            from,
+            to,
+            "event": "redirect"
+        });
+    }
+
+    buildComponentGraph(
         widgets: WidgetInfo[],
-        handlers: Map<string, string[]>,
-        routeId: string | undefined
-    ): Promise<void> {
+        widgetEventMaps: WidgetEventMap[],
+        route: string | undefined
+    ): void {
+        this.buildWidgets(widgets);
+        this.buildContainsTransitions(route, widgets);
+        this.buildRouterLinkTransitions(widgets);
+        this.buildNavigationTransitions(widgetEventMaps);
+    }
+
+    private buildWidgets(widgets: WidgetInfo[]): void {
         for (const widget of widgets){
-            // Add widget node
             this.graph.nodes.push({ id: widget.id, type: widget.type });
-            
-            // Add "contains" transition from route to widget (if one exists)
-            if (routeId)
-                this.graph.transitions.push({ from: routeId, to: widget.id, event: 'contains', });
-            
-            // Add routerLink transitions
-            const routerLink = widget.events.get('routerLink');
-            if (routerLink) {
-                if (routerLink.startsWith('http')){
-                    this.graph.transitions.push({
-                        from: widget.id,
-                        to: routerLink,
-                        event: 'externalLink',
-                    });
-                }
-                else {
-                    const targetRoute = routerLink.startsWith('/') ? routerLink : `/${routerLink}`;
-                    const routeNode = this.graph.nodes.find(
-                        (node) => node.type === 'route' && node.id === targetRoute
-                    );
+            console.log(`Widget node added: ID: ${widget.id}, Type: ${widget.type}`);
+        }
+    }
 
-                    if (routeNode) {
-                        this.graph.transitions.push({
-                            from: widget.id,
-                            to: targetRoute,
-                            event: 'routerLink',
-                        });
-                    } else {
-                        console.warn(`Unmatched routerLink: ${routerLink} for widget ${widget.id}`);
-                    }
-                }
-            }
-
-            // Add navigation transitions (if the widget's handlers have navigation logic)
-            for (const [event, handler] of widget.events) {
-                // console.log(`Matching handler: ${handler}`);
-                if (event === "routerLink") continue; // Skip routerLink since already handled
-                const associatedRoutes = handlers.get(handler);
-                if (associatedRoutes) {
-                    for (const targetRoute of associatedRoutes) {
-                        // Ensure the target route exists in the graph
-                        const normalizedTargetRoute = `${targetRoute.replace(/['"`]/g, '')}`;
-                        const routeNode = this.graph.nodes.find(
-                            (node) => node.type === 'route' && node.id === normalizedTargetRoute
-                        );
-
-                        if (routeNode) {
-                            this.graph.transitions.push({
-                                from: widget.id,
-                                to: normalizedTargetRoute,
-                                event: event,
-                            });
-                            console.log(`Navigate transition: ${widget.id} -> ${normalizedTargetRoute}`); // Debug log
-                        } 
-                        else
-                            console.warn(`Unmatched route for handler ${handler}: ${normalizedTargetRoute}`); // Debug log
-                    }
-                }
-                else
-                    console.warn(`No routes found for handler: ${handler}`); // Debug log
+    private buildContainsTransitions(route: string | undefined, widgets: WidgetInfo[]): void {
+        if (route) {
+            for (const widget of widgets){
+                this.graph.transitions.push({ from: route, to: widget.id, event: "contains" });
+                console.log(`contains transition added: ${route} -> ${widget.id}`);
             }
         }
     }
 
-    async addRouteRedirect(from: string, to: string): Promise<void> {
-        this.graph.transitions.push({
-            from,
-            to,
-            "event": "redirect" 
-        });
+    private buildRouterLinkTransitions(widgets: WidgetInfo[]): void {
+        for (const widget of widgets) {
+            const routerLink = widget.events.get("routerLink");
+            if (routerLink) {
+                const targetRoute = routerLink.startsWith('/') ? routerLink : `/${routerLink}`;
+                const routeNode = this.getRoute(targetRoute);
+
+                if (routeNode) {
+                    this.graph.transitions.push({
+                        from: widget.id,
+                        to: targetRoute,
+                        event: 'routerLink',
+                    });
+                    console.log(`routerLink transition added: ${widget.id} -> ${targetRoute}`);
+                } else
+                    console.warn(`Unmatched routerLink: ${routerLink} for widget ${widget.id}`);
+            }
+        }
     }
 
-    build(): NavigationGraph {
-        return this.graph;
+    private getRoute(routeId: string): Node | undefined {
+        return this.graph.nodes.find(
+            (node) => node.type === 'route' && node.id === routeId
+        );
+    }
+
+    private buildNavigationTransitions(widgetEventMaps: WidgetEventMap[]): void {
+        for (const widgetEventMap of widgetEventMaps) {
+            for (const eventContext of widgetEventMap.events) {
+                for (const { called } of eventContext.calls) {
+                    if (called === "/backend" && !this.graph.nodes.find((n) => n.id === "/backend")) {
+                        this.graph.nodes.push({ id: "/backend", type: "virtual-route" });
+                        console.log('Virtual route node added: /backend');
+                    }
+
+                    this.graph.transitions.push({
+                        from: widgetEventMap.widgetID,
+                        to: called,
+                        event: eventContext.event,
+                    });
+
+                    console.log(`${eventContext.event} transition added: ${widgetEventMap.widgetID} -> ${called}`);
+                }
+            }
+        }
     }
 }

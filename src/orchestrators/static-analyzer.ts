@@ -4,7 +4,8 @@ import { LogicAnalyzer } from '../analyzers/logic-analyzer.js';
 import { RouteAnalyzer } from '../analyzers/route-analyzer.js';
 import { TemplateAnalyzer } from '../analyzers/template-analyzer.js';
 import { NavigationGraphBuilder } from '../builders/navigation-graph-builder.js';
-import { NavigationGraph, RouteMap } from '../models/navigation-graph.js';
+import { NavigationGraph } from '../models/navigation-graph.js';
+import { RouteMap } from "../models/route-info.js";
 
 export class StaticAnalyzer {
     private project: ts.Project;
@@ -28,7 +29,8 @@ export class StaticAnalyzer {
 
     async analyze(): Promise<NavigationGraph> {
         // Step 1: Build route nodes and transitions and extract route map
-        const routeMap = await this.buildRoutes();
+        const routeMap = await this.extractRouteMap();
+        this.graphBuilder.buildRoutes(routeMap);
 
         // Step 3: Extract Widgets and Event Handlers
         for (const file of this.project.getSourceFiles()) {
@@ -40,35 +42,22 @@ export class StaticAnalyzer {
 
                     if (template) {
                         const widgets = await this.templateAnalyzer.analyze(template);
-                        const handlers = this.logicAnalyzer.analyze(file);
-                        await this.graphBuilder.addWidgets(widgets, handlers, route); // Pass route context
+                        const widgetEventMaps = this.logicAnalyzer.analyze(file, widgets);
+                        this.graphBuilder.buildComponentGraph(widgets, widgetEventMaps, route);
                     }
                 }
             }
         }
 
         // Return the built graph
-        return this.graphBuilder.build();
+        return this.graphBuilder.getGraph();
     }
 
-    private async buildRoutes(): Promise<RouteMap> {
+    private async extractRouteMap(): Promise<RouteMap> {
         // Step 1: Extract component and redirection routes
         const appModulePath = path.join(this.projectPath, 'src', 'app', 'app.module.ts');
         const routeFile = this.project.getSourceFileOrThrow(appModulePath);
-        const routeMap = await this.routeAnalyzer.analyze(routeFile);
-
-        // Step 2: Add Route nodes to graph
-        for (const { component, route } of routeMap.components) {
-            await this.graphBuilder.addRoute(`/${route}`);
-            console.log(`Route node added in graph for route /${route}`); // Debug log
-        }
-
-        for (const { route, redirectTo } of routeMap.redirections) {
-            await this.graphBuilder.addRouteRedirect(`/${route}`, `/${redirectTo}`);
-            console.log(`Transition added in graph for redirection: /${route} -> /${redirectTo}`); // Debug log
-        }
-
-        return routeMap;
+        return await this.routeAnalyzer.analyze(routeFile);
     }
 
     private getComponentRoute(cls: ts.ClassDeclaration, routeMap: RouteMap) {

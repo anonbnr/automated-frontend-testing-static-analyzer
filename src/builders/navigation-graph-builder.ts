@@ -16,6 +16,15 @@ export class NavigationGraphBuilder {
         }
 
         for (const { route, redirectTo } of routeMap.redirections) {
+            const source = this.getRoute(`/${route}`);
+            const target = this.getRoute(`/${redirectTo}`);
+
+            if (!source) // add the source route node if it's not already added
+                this.graph.nodes.push({ id: `/${route}`, type: "route" });
+
+            if (!target) // add the target route node if it's not already added
+                this.graph.nodes.push({ id: `/${redirectTo}`, type: "route" });
+
             this.addRouteRedirect(`/${route}`, `/${redirectTo}`);
             console.log(`redirection transition added: /${route} -> /${redirectTo}`); // Debug log
         }

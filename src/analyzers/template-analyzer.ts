@@ -3,7 +3,6 @@ import * as path from "path";
 import * as ts from 'ts-morph';
 import { WidgetInfo } from '../models/widget-info.js';
 import { parseAngularTemplate } from '../parsers/angular-template-parser.js';
-import { WidgetIDGenerator } from '../utils/widget-id-generator.js';
 import { WidgetProcessor } from '../utils/widget-processor.js';
 
 export class TemplateAnalyzer {
@@ -45,7 +44,7 @@ export class TemplateAnalyzer {
 
     async analyze(template: string): Promise<WidgetInfo[]> {
         const ast = await parseAngularTemplate(template);
-        const processor = new WidgetProcessor(new WidgetIDGenerator(), template);
+        const processor = new WidgetProcessor(template);
         return processor.processWidgets(ast);
     }
 }

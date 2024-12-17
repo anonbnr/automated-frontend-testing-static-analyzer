@@ -1,17 +1,18 @@
 import * as ts from 'ts-morph';
-import { NavigationGraphBuilder } from '../builders/navigation-graph-builder.js';
+import { RouteMap } from '../models/navigation-graph.js';
 
 export class RouteAnalyzer {
-    private graphBuilder: NavigationGraphBuilder;
     private routeVariableNames: string[];
 
-    constructor(graphBuilder: NavigationGraphBuilder, routeVariableNames: string[] = ['routes', 'appRoutes']) {
-        this.graphBuilder = graphBuilder;
+    constructor(routeVariableNames: string[] = ['routes', 'appRoutes']) {
         this.routeVariableNames = routeVariableNames;
     }
 
-    async analyze(routeFile: ts.SourceFile): Promise<Map<string, string>> {
-        const routeMap = new Map<string, string>();
+    async analyze(routeFile: ts.SourceFile): Promise<RouteMap> {
+        const routeMap: RouteMap = {
+            components: [],
+            redirections: []
+        };
 
         for (const declaration of routeFile.getVariableDeclarations()) {
             if (this.routeVariableNames.includes(declaration.getName())) {
@@ -20,27 +21,32 @@ export class RouteAnalyzer {
                 if (initializer?.isKind(ts.SyntaxKind.ArrayLiteralExpression)) {
                     for (const element of initializer.getElements()) {
                         if (element.isKind(ts.SyntaxKind.ObjectLiteralExpression)) {
-                            // Extract 'path' if available
-                            const routePath = this.extractPath(element);
-                            const routeId = `/${routePath}`;
+                            if (this.hasPathProp(element)) {
+                                // Extract 'path' if available
+                                const routePath = this.extractPath(element);
 
-                            if (routePath) {
-                                await this.graphBuilder.addRoute(routeId);
-                                console.log(`Route extracted: ${routeId}`); // Debug log
-
-                                // Extract 'component' if available
-                                const componentName = this.extractComponent(element);
-                                if (componentName) {
-                                    routeMap.set(componentName, routeId);
-                                    console.log(`Component ${componentName} mapped to route ${routeId}`); // Debug log
+                                if (routePath) {
+                                    // Extract 'component' if available
+                                    const componentName = this.extractComponent(element);
+                                    if (componentName) {
+                                        routeMap.components.push({
+                                            component: componentName,
+                                            route: routePath
+                                        });
+                                        console.log(`Component ${componentName} mapped to route ${routePath}`); // Debug log
+                                    }
                                 }
-                            }
 
-                            // Extract 'redirectTo' if available
-                            const redirectTo = this.extractRedirectTo(element);
-                            if (redirectTo) {
-                                await this.graphBuilder.addRouteRedirect(routeId, `/${redirectTo}`);
-                                console.log(`Redirect added: ${routeId} -> /${redirectTo}`); // Debug log
+                                // Extract 'redirectTo' if available
+                                const redirectTo = this.extractRedirectTo(element);
+                                if (redirectTo) {
+                                    // await this.graphBuilder.addRouteRedirect(routeId, `/${redirectTo}`);
+                                    routeMap.redirections.push({
+                                        route: routePath,
+                                        redirectTo
+                                    });
+                                    console.log(`Redirect added: ${routePath} -> ${redirectTo}`); // Debug log
+                                }
                             }
                         }
                     }
@@ -49,6 +55,15 @@ export class RouteAnalyzer {
         }
 
         return routeMap;
+    }
+
+    private hasPathProp(element: ts.ObjectLiteralExpression): boolean {
+        const pathProp = element.getProperty('path');
+
+        if (pathProp)
+            return true;
+        else
+            return false;
     }
 
     private extractPath(element: ts.ObjectLiteralExpression): string {

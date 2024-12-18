@@ -1,15 +1,18 @@
-# Static Analyzer for Frontend Automation Framework
+# Static Analyzer for Automated Frontent Testing Framework
 ## Overview
-The Static Analyzer is a key component of the **Frontend Automation Framework**, designed to perform **static code analysis** on Angular applications. It generates a **Navigation Graph**, which maps the structure of the application, including its routes, components, and interactive widgets. This Navigation Graph serves as the foundation for automated test scenario generation, enabling precise and efficient frontend testing.
+The Static Analyzer is a core component of the **Frontend Automation Framework**, designed to perform **static code analysis** on Angular applications. It generates a **Navigation Graph** that maps the application's structure, including its routes, components, and interactive widgets. This graph serves as the foundation for automated test scenario generation, enabling precise and efficient frontend testing.
 
 ## Features
-- **Route Analysis**: Extracts routes from Angular's `RouterModule` configuration, including paths, associated components, and redirects.
-- **Template Analysis**: Identifies interactive widgets (e.g., buttons, forms) and event bindings from Angular templates.
-- **Logic Analysis**: Parses TypeScript files to extract navigation logic (e.g., calls to `router.navigate`).
-- **Navigation Graph Builder**: Constructs a graph representation of the application's structure, including:
-  - **Nodes**: Routes, components, widgets
-  - **Transitions**: Navigation events, router links, redirects
-- **Modular Design**: Highly modular and extensible structure for ease of maintenance and scalability.
+1. **Route Analysis**: Extracts Angular routing configurations, including paths, components, and redirects.
+2. **Template Analysis**: Identifies interactive widgets (e.g., buttons, forms) and their event bindings from Angular templates.
+3. **Logic Analysis**: Analyzes TypeScript files to extract navigation logic, such as calls to router.navigate and service interactions.
+4. **Navigation Graph Builder**: Constructs a graph representation of the application's structure, including:
+   - **Nodes**: Routes, components, widgets
+   - **Transitions**: Navigation events, router links, redirects, and backend calls.
+5. **Event Handling Models**:
+   - **EventContext**: Captures details of events, including their handlers and associated calls.
+   - **WidgetEventMap**: Maps widgets to events and transitions, providing deeper insights into event-driven navigation.
+6. **Modular Design**: Highly modular and extensible structure for scalability and ease of maintenance.
 
 ## Project Structure
 ```plaintext
@@ -24,7 +27,8 @@ src/
 │   ├── navigation-graph-builder.ts # Builds the navigation graph
 ├── models/                   # Data models and types
 │   ├── navigation-graph.ts       # Models for graph nodes, transitions
-│   ├── widget-info.ts            # Model for widget information
+│   ├── route-info.ts             # Models for route mappings and redirects
+│   ├── widget-info.ts            # Models for widget information and event handling
 ├── orchestrators/            # High-level orchestrators
 │   ├── static-analyzer.ts        # Combines analyzers to perform static analysis
 ├── parsers/                  # Parsing utilities
@@ -69,7 +73,7 @@ The static analyzer exposes an API for analyzing Angular applications.
    ```bash
    npm start
    ```
-2. Send a POST request to the API:
+2. Send a POST request to the API using an API testing tool (e.g., [cURL](https://curl.se/), [Postman](https://www.postman.com/)):
    ```bash
    POST http://localhost:3000/analyze
    Content-Type: application/json
@@ -90,11 +94,25 @@ The static analyzer exposes an API for analyzing Angular applications.
    }
    ```
 
-## Key Components
+## Key Updates (Recent Enhancements)
+### New Event Handling Models
+- **EventHandlerCallContext**: Models calls within event handlers, capturing both `router.navigate` calls and backend service interactions.
+- **EventContext**: Tracks event names, handlers, and associated calls for each widget.
+- **WidgetEventMap**: Consolidates widget-specific event data into a unified structure for graph construction.
+
+### Refactored Navigation Graph Construction
+- Dynamically detects and adds **"backend" virtual routes** based on event handler calls.
+- Refined **buildNavigationTransitions** to leverage event-driven transitions for comprehensive graph coverage.
+
+### Improved Code Modularity
+- Extracted route-related interfaces (`RouteMap`, `ComponentRoute`, `RedirectRoute`) into `models/route-info.ts`.
+- Enhanced separation of concerns across analyzers, builders, and orchestrators.
+
+## Core Components
 ### Analyzers
 - **RouteAnalyzer**: Extracts route configurations, including paths, components, and redirects.
 - **TemplateAnalyzer**: Parses Angular templates to identify widgets and their event bindings.
-- **LogicAnalyzer**: Analyzes TypeScript files to extract navigation-related logic.
+- **LogicAnalyzer**: Analyzes TypeScript files to extract navigation-related logic, including backend interactions.
 
 ### Graph Builder
 - **NavigationGraphBuilder**: Constructs a directed graph representing the application's structure.
@@ -117,7 +135,7 @@ The static analyzer exposes an API for analyzing Angular applications.
     - `navigationGraph` (object): Contains the nodes and transitions of the Navigation Graph.
 
 ## Future Enhancements
-- Integration with dynamic analysis components.
-- Enhanced error reporting and logging.
-- Support for additional frontend frameworks (e.g., React, Vue).
-- Automated test scenario generation based on the Navigation Graph.
+1. **Test Scenario Automation** (*High Priority*): Automatically generate test scenarios based on the Navigation Graph.
+2. **Error Reporting**: Provide detailed error messages and recovery options.
+3. **Dynamic Analysis Integration**: Combine static and dynamic analysis for comprehensive navigation graphs and automated frontend testing.
+4. **Framework Support** (*Long-Term Goal*): Expand support to React, Vue, and other frontend frameworks.

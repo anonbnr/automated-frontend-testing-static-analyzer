@@ -1,5 +1,6 @@
-import { Node, NavigationGraph } from "../models/navigation-graph.js";
-import { RouteMap } from "../models/route-info.js";
+import { ComponentInfo } from "../models/component-info.js";
+import { NavigationGraph, Node } from "../models/navigation-graph.js";
+import { RouteMap, RouteMapUtils } from "../models/route-info.js";
 import { WidgetEventMap, WidgetInfo } from "../models/widget-info.js";
 
 export class NavigationGraphBuilder {
@@ -43,30 +44,60 @@ export class NavigationGraphBuilder {
     }
 
     buildComponentGraph(
-        widgets: WidgetInfo[],
+        component: ComponentInfo,
         widgetEventMaps: WidgetEventMap[],
         route: string | undefined
     ): void {
-        this.buildWidgets(widgets);
-        this.buildContainsTransitions(route, widgets);
-        this.buildRouterLinkTransitions(widgets);
+        this.buildWidgets(component.widgets);
+        this.buildContainsTransitions(route, component.widgets);
+        this.buildRouterLinkTransitions(component.widgets);
         this.buildNavigationTransitions(widgetEventMaps);
     }
 
     private buildWidgets(widgets: WidgetInfo[]): void {
-        for (const widget of widgets){
+        for (const widget of widgets) {
             this.graph.nodes.push({ id: widget.id, type: widget.type });
             console.log(`Widget node added: ID: ${widget.id}, Type: ${widget.type}`);
         }
     }
 
-    private buildContainsTransitions(route: string | undefined, widgets: WidgetInfo[]): void {
+    buildContainsTransitions(route: string | undefined, widgets: WidgetInfo[]): void {
         if (route) {
-            for (const widget of widgets){
+            for (const widget of widgets) {
                 this.graph.transitions.push({ from: route, to: widget.id, event: "contains" });
                 console.log(`contains transition added: ${route} -> ${widget.id}`);
             }
         }
+    }
+
+    buildSharedTransitions(component: ComponentInfo, parents: string[], routeMap: RouteMap): void {
+        const sharedNodeId = `${component.selector}`;
+        this.graph.nodes.push({ id: sharedNodeId, type: 'shared' });
+
+        component.widgets.forEach((widget) => {
+            this.graph.transitions.push({ from: sharedNodeId, to: widget.id, event: 'contains' });
+        });
+
+        parents.forEach((parent) => {
+            const parentRoute = RouteMapUtils.getRouteFromSelector(parent, routeMap);
+            if (parentRoute) {
+                this.graph.transitions.push({ from: `/${parentRoute}`, to: sharedNodeId, event: 'contains' });
+            }
+        });
+    }
+
+    buildGlobalTransitions(component: ComponentInfo): void {
+        const globalNodeId = `${component.selector}`;
+
+        if (!this.graph.nodes.find((node) => node.id === globalNodeId)) {
+            this.graph.nodes.push({ id: globalNodeId, type: 'global' });
+            console.log(`Global node added: ${globalNodeId}`);
+        }
+
+        component.widgets.forEach((widget) => {
+            this.graph.transitions.push({ from: globalNodeId, to: widget.id, event: 'contains' });
+            console.log(`contains transition added: ${globalNodeId} -> ${widget.id}`);
+        });
     }
 
     private buildRouterLinkTransitions(widgets: WidgetInfo[]): void {

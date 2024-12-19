@@ -1,7 +1,8 @@
 import { ComponentInfo } from "../models/component-info.js";
 import { NavigationGraph, Node } from "../models/navigation-graph.js";
-import { RouteMap, RouteMapUtils } from "../models/route-info.js";
+import { RouteMap } from "../models/route-info.js";
 import { WidgetEventMap, WidgetInfo } from "../models/widget-info.js";
+import { RouteMapUtils } from "../utils/route-info-utils.js";
 
 export class NavigationGraphBuilder {
     private graph: NavigationGraph = { nodes: [], transitions: [] };
@@ -35,6 +36,14 @@ export class NavigationGraphBuilder {
         this.graph.nodes.push({ id: route, type: 'route' });
     }
 
+    private addGlobal(globalId: string): void {
+        this.graph.nodes.push({ id: globalId, type: 'global' });
+    }
+
+    private addShared(sharedId: string): void {
+        this.graph.nodes.push({ id: sharedId, type: 'shared' });
+    }
+
     private addRouteRedirect(from: string, to: string): void {
         this.graph.transitions.push({
             from,
@@ -61,42 +70,43 @@ export class NavigationGraphBuilder {
         }
     }
 
-    buildContainsTransitions(route: string | undefined, widgets: WidgetInfo[]): void {
-        if (route) {
+    buildContainsTransitions(source: string | undefined, widgets: WidgetInfo[]): void {
+        if (source) {
             for (const widget of widgets) {
-                this.graph.transitions.push({ from: route, to: widget.id, event: "contains" });
-                console.log(`contains transition added: ${route} -> ${widget.id}`);
+                this.graph.transitions.push({ from: source, to: widget.id, event: "contains" });
+                console.log(`contains transition added: ${source} -> ${widget.id}`);
             }
         }
-    }
-
-    buildSharedTransitions(component: ComponentInfo, parents: string[], routeMap: RouteMap): void {
-        const sharedNodeId = `${component.selector}`;
-        this.graph.nodes.push({ id: sharedNodeId, type: 'shared' });
-
-        component.widgets.forEach((widget) => {
-            this.graph.transitions.push({ from: sharedNodeId, to: widget.id, event: 'contains' });
-        });
-
-        parents.forEach((parent) => {
-            const parentRoute = RouteMapUtils.getRouteFromSelector(parent, routeMap);
-            if (parentRoute) {
-                this.graph.transitions.push({ from: `/${parentRoute}`, to: sharedNodeId, event: 'contains' });
-            }
-        });
     }
 
     buildGlobalTransitions(component: ComponentInfo): void {
         const globalNodeId = `${component.selector}`;
 
         if (!this.graph.nodes.find((node) => node.id === globalNodeId)) {
-            this.graph.nodes.push({ id: globalNodeId, type: 'global' });
+            this.addGlobal(globalNodeId);
             console.log(`Global node added: ${globalNodeId}`);
         }
 
-        component.widgets.forEach((widget) => {
-            this.graph.transitions.push({ from: globalNodeId, to: widget.id, event: 'contains' });
-            console.log(`contains transition added: ${globalNodeId} -> ${widget.id}`);
+        this.buildContainsTransitions(globalNodeId, component.widgets);
+    }
+
+    buildSharedTransitions(component: ComponentInfo, routeMap: RouteMap, componentMap: ComponentInfo[]): void {
+        const sharedNodeId = `${component.selector}`;
+
+        // Add shared node to the graph
+        if (!this.graph.nodes.find((node) => node.id === sharedNodeId)) {
+            this.addShared(sharedNodeId);
+            console.log(`Shared node added: ${sharedNodeId}`);
+        }
+
+        // Add contains transitions for shared node's widgets
+        this.buildContainsTransitions(sharedNodeId, component.widgets);
+
+        // Find parent routes and create transitions
+        const parentRoutes = RouteMapUtils.findParentRoutes(component, componentMap, routeMap);
+        parentRoutes.forEach(route => {
+            this.graph.transitions.push({ from: route, to: sharedNodeId, event: "contains" });
+            console.log(`Shared node transition added: ${route} -> ${sharedNodeId}`);
         });
     }
 

@@ -65,7 +65,13 @@ export class NavigationGraphBuilder {
 
     private buildWidgets(widgets: WidgetInfo[]): void {
         for (const widget of widgets) {
-            this.graph.nodes.push({ id: widget.id, type: widget.type });
+            this.graph.nodes.push({
+                id: widget.id,
+                type: widget.type,
+                attributes: widget.attributes,
+                validationRules: widget.validationRules,
+                triggersFormSubmission: widget.triggersFormSubmission
+            });
             console.log(`Widget node added: ID: ${widget.id}, Type: ${widget.type}`);
         }
     }
@@ -139,7 +145,7 @@ export class NavigationGraphBuilder {
     private buildNavigationTransitions(widgetEventMaps: WidgetEventMap[]): void {
         for (const widgetEventMap of widgetEventMaps) {
             for (const eventContext of widgetEventMap.events) {
-                for (const { called } of eventContext.calls) {
+                for (const { called, data } of eventContext.calls) {
                     if (called === "/backend" && !this.graph.nodes.find((n) => n.id === "/backend")) {
                         this.graph.nodes.push({ id: "/backend", type: "virtual-route" });
                         console.log('Virtual route node added: /backend');
@@ -149,6 +155,7 @@ export class NavigationGraphBuilder {
                         from: widgetEventMap.widgetID,
                         to: called,
                         event: eventContext.event,
+                        metadata: { data }
                     });
 
                     console.log(`${eventContext.event} transition added: ${widgetEventMap.widgetID} -> ${called}`);

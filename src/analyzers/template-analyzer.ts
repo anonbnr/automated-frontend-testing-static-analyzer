@@ -54,6 +54,8 @@ export class TemplateAnalyzer {
         // Extract widgets
         const widgets = processor.processWidgets(ast);
 
+        console.log('Widgets: ', widgets);
+
         // Extract nested components
         const nestedComponents: string[] = [];
         const traverse = (nodes: TmplAstNode[]) => {
@@ -76,7 +78,7 @@ export class TemplateAnalyzer {
         };
         traverse(ast);
 
-        // Fetch the selector from the decorator
+        // Fetch the selector
         const selector = this.decorator
             .getArguments()[0]
             ?.asKind(ts.SyntaxKind.ObjectLiteralExpression)

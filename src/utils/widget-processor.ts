@@ -29,6 +29,7 @@ export class WidgetProcessor {
                         const id = node.attributes.find((attr) => attr.name === 'id')?.value
                             || this.idGenerator.generateID(node);
                         const events = new Map<string, string>();
+                        const attributes: any = {};
 
                         // Extract routerLink for anchors
                         if (node.name.toLowerCase() === 'a') {
@@ -37,12 +38,40 @@ export class WidgetProcessor {
                                 events.set(anchorAttr.name, anchorAttr.value);
                         }
 
+                        // Extract events
                         node.outputs.forEach(output => {
                             const handler = this.extractHandler(output.handler);
                             events.set(output.name, handler);
                         });
 
-                        widgets.push({ id, type: node.name, events });
+                        // Extract attributes
+                        node.attributes.forEach(attr => {
+                            attributes[attr.name] = attr.value;
+                        });
+
+                        // Add type-specific attributes
+                        if (node.name === 'input') {
+                            attributes.type = attributes.type || 'text';
+                        }
+
+                        // Check for validation attributes
+                        const validationRules: string[] = [];
+                        if (attributes.required) validationRules.push('required');
+                        if (attributes.pattern) validationRules.push('pattern');
+                        if (attributes.min) validationRules.push('min');
+                        if (attributes.max) validationRules.push('max');
+
+                        // Check for form submission triggers
+                        const triggersFormSubmission = node.name === 'button' && attributes.type === 'submit';
+
+                        widgets.push({
+                            id,
+                            type: node.name,
+                            events,
+                            attributes,
+                            validationRules,
+                            triggersFormSubmission
+                        });
                     }
 
                     // Recursively process child nodes

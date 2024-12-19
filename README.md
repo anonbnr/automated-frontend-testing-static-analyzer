@@ -1,44 +1,48 @@
 # Static Analyzer for Automated Frontent Testing Framework
 ## Overview
-The Static Analyzer is a core component of the **Frontend Automation Framework**, designed to perform **static code analysis** on Angular applications. It generates a **Navigation Graph** that maps the application's structure, including its routes, components, and interactive widgets. This graph serves as the foundation for automated test scenario generation, enabling precise and efficient frontend testing.
+The Static Analyzer is a core component of the **Frontend Automation Framework**, designed to perform **static code analysis** on Angular applications. It generates a **Navigation Graph** that maps the application's structure, including its routes, components, interactive widgets, and their validation rules. This graph serves as the foundation for automated test scenario generation, enabling precise and efficient frontend testing.
 
 ## Features
 1. **Route Analysis**: Extracts Angular routing configurations, including paths, components, and redirects.
-2. **Template Analysis**: Identifies interactive widgets (e.g., buttons, forms) and their event bindings from Angular templates.
-3. **Logic Analysis**: Analyzes TypeScript files to extract navigation logic, such as calls to router.navigate and service interactions.
+2. **Template Analysis**: Identifies interactive widgets (e.g., buttons, forms) and their event bindings, attributes, and validation rules from Angular templates.
+3. **Logic Analysis**: Analyzes TypeScript files to extract navigation logic, such as calls to router.navigate and service interactions, and validation rules.
 4. **Navigation Graph Builder**: Constructs a graph representation of the application's structure, including:
-   - **Nodes**: Routes, components, widgets
-   - **Transitions**: Navigation events, router links, redirects, and backend calls.
+   - **Nodes**: Routes, components, widgets, and virtual routes.
+   - **Transitions**: Navigation events, router links, redirects, backend calls, and form submissions
 5. **Event Handling Models**:
    - **EventContext**: Captures details of events, including their handlers and associated calls.
    - **WidgetEventMap**: Maps widgets to events and transitions, providing deeper insights into event-driven navigation.
+   - **Validation Rules**: Extracts and maps form control validation rules (e.g., `Validators.required`) to widgets.
 6. **Modular Design**: Highly modular and extensible structure for scalability and ease of maintenance.
 
 ## Project Structure
 ```plaintext
-src/
-├── analyzers/                 # Core static analysis logic
-│   ├── logic-analyzer.ts          # Analyzes navigation logic in TypeScript files
-│   ├── route-analyzer.ts          # Analyzes routing configurations
-│   ├── template-analyzer.ts       # Analyzes Angular templates for widgets and bindings
-├── api/                      # REST API for exposing the analyzer
-│   ├── api.ts                    # Express API for analysis
-├── builders/                 # Graph and other builders
-│   ├── navigation-graph-builder.ts # Builds the navigation graph
-├── models/                   # Data models and types
-│   ├── navigation-graph.ts       # Models for graph nodes, transitions
-│   ├── route-info.ts             # Models for route mappings and redirects
-│   ├── widget-info.ts            # Models for widget information and event handling
-├── orchestrators/            # High-level orchestrators
-│   ├── static-analyzer.ts        # Combines analyzers to perform static analysis
-├── parsers/                  # Parsing utilities
-│   ├── angular-template-parser.ts # Parses Angular templates into AST
-├── utils/                    # Utility classes and helpers
-│   ├── widget-id-generator.ts    # Generates unique IDs for widgets
-│   ├── widget-processor.ts       # Processes AST nodes into widgets
-├── index.ts                  # Entry point for testing the analyzer locally
-package.json                  # Project metadata and dependencies
-tsconfig.json                 # TypeScript configuration
+automated-frontend-testing-static-analyzer/
+├── src/
+│   ├── analyzers/                 
+│   │   ├── logic-analyzer.ts        # Analyzes navigation logic in TypeScript files
+│   │   ├── route-analyzer.ts        # Analyzes routing configurations
+│   │   ├── template-analyzer.ts     # Analyzes Angular templates for widgets and bindings
+│   ├── api/                         
+│   │   ├── api.ts                   # Express API for analysis
+│   ├── builders/                    
+│   │   ├── navigation-graph-builder.ts # Builds the navigation graph
+│   ├── models/                      
+│   │   ├── component-info.ts        # Component-level models
+│   │   ├── navigation-graph.ts      # Models for graph nodes and transitions
+│   │   ├── route-info.ts            # Models for route mappings and redirects
+│   │   ├── widget-info.ts           # Models for widget details, events, and validation rules
+│   ├── orchestrators/               
+│   │   ├── static-analyzer.ts       # Combines analyzers for end-to-end analysis
+│   ├── parsers/                     
+│   │   ├── angular-template-parser.ts # Parses Angular templates into AST
+│   ├── utils/                       
+│   │   ├── route-info-utils.ts      # Helpers for route-related processing
+│   │   ├── widget-id-generator.ts   # Generates unique IDs for widgets
+│   │   ├── widget-processor.ts      # Processes AST nodes into widget models
+│   ├── index.ts                     # Entry point for local testing
+├── package.json                     
+├── tsconfig.json                    
 ```
 
 ## Installation
@@ -95,18 +99,17 @@ The static analyzer exposes an API for analyzing Angular applications.
    ```
 
 ## Key Updates (Recent Enhancements)
-### New Event Handling Models
-- **EventHandlerCallContext**: Models calls within event handlers, capturing both `router.navigate` calls and backend service interactions.
-- **EventContext**: Tracks event names, handlers, and associated calls for each widget.
-- **WidgetEventMap**: Consolidates widget-specific event data into a unified structure for graph construction.
+### Enhanced Widget Processing
+- Extracts detailed widget attributes, events, and validation rules (e.g., `Validators.required`, `Validators.pattern`).
+- Maps form control validation rules to corresponding widgets in the Navigation Graph.
 
-### Refactored Navigation Graph Construction
-- Dynamically detects and adds **"backend" virtual routes** based on event handler calls.
-- Refined **buildNavigationTransitions** to leverage event-driven transitions for comprehensive graph coverage.
+### Navigation Graph Improvements
+- Includes validation rules and widget attributes for better test scenario definition.
+- Refined transition building for backend calls, form submissions, and router links.
 
-### Improved Code Modularity
-- Extracted route-related interfaces (`RouteMap`, `ComponentRoute`, `RedirectRoute`) into `models/route-info.ts`.
-- Enhanced separation of concerns across analyzers, builders, and orchestrators.
+### Modular Enhancements
+- Updated data models (`widget-info.ts`, `navigation-graph.ts`) to include validation rules and form submission triggers.
+- Refactored `LogicAnalyzer` and `WidgetProcessor` for improved validation and event handling logic.
 
 ## Core Components
 ### Analyzers

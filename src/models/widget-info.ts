@@ -2,6 +2,11 @@ export type WidgetInfo = {
     id: string; // Unique widget ID
     type: string; // Widget type (e.g., input, button, etc.)
     events: Map<string, string>; // Event-to-handler mapping (e.g., click -> onSavePost)
+    attributes?: {
+        [key: string]: any; // Dynamically allows all properties
+    };
+    validationRules?: string[]; // E.g., ['required', 'pattern']
+    triggersFormSubmission?: boolean; // True if this widget submits a form
 }
 
 export interface EventHandlerCallContext {

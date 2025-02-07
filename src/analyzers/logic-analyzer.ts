@@ -1,8 +1,19 @@
 import * as ts from 'ts-morph';
-import { EventContext, EventHandlerCallContext, WidgetEventMap, WidgetInfo } from '../models/widget-info.js';
 import { RouteMap } from '../models/route-info.js';
+import { EventContext, EventHandlerCallContext, WidgetEventMap, WidgetInfo } from '../models/widget-info.js';
 
+/**
+ * LogicAnalyzer is responsible for analyzing the business logic of an Angular component.
+ * It extracts event handlers, their calls, and form validation rules.
+ */
 export class LogicAnalyzer {
+    /**
+     * Analyzes the TypeScript file of a component to extract widget event mappings.
+     * @param file The TypeScript source file.
+     * @param widgets A list of widgets extracted from the component's template.
+     * @param routeMap The application's route map for resolving navigation routes.
+     * @returns An array of WidgetEventMap objects representing widget interactions.
+     */
     analyze(file: ts.SourceFile, widgets: WidgetInfo[], routeMap: RouteMap): WidgetEventMap[] {
         const widgetEventMaps: WidgetEventMap[] = [];
         const methods = this.extractMethods(file);
@@ -43,6 +54,11 @@ export class LogicAnalyzer {
         return widgetEventMaps;
     }
 
+    /**
+     * Extracts method declarations from a TypeScript class.
+     * @param file The TypeScript source file.
+     * @returns A map of method names to their declarations.
+     */
     private extractMethods(file: ts.SourceFile): Map<string, ts.MethodDeclaration> {
         const methods = new Map<string, ts.MethodDeclaration>();
 
@@ -56,6 +72,12 @@ export class LogicAnalyzer {
         return methods;
     }
 
+    /**
+     * Extracts function calls within an event handler and resolves navigation routes.
+     * @param handler The method declaration containing function calls.
+     * @param routeMap The application's route map for resolving navigation.
+     * @returns An array of EventHandlerCallContext objects describing calls within the handler.
+     */
     private extractHandlerCalls(handler: ts.MethodDeclaration, routeMap: RouteMap): EventHandlerCallContext[] {
         const uniqueCalls = new Map<string, EventHandlerCallContext>(); // Store unique calls
 
@@ -70,7 +92,7 @@ export class LogicAnalyzer {
             let metadataParams: string[] = [];
 
             if (caller.includes('navigate')) {
-
+                // Handle navigation calls
                 if (args.length === 1 && args[0].isKind(ts.SyntaxKind.ArrayLiteralExpression)) {
                     const arrayArgs = args[0].asKind(ts.SyntaxKind.ArrayLiteralExpression)!.getElements();
                     const routeBase = arrayArgs[0].getText().replace(/['"`]/g, ""); // First argument
@@ -124,6 +146,11 @@ export class LogicAnalyzer {
         return Array.from(uniqueCalls.values());
     }
 
+    /**
+     * Extracts validation rules from form control definitions in the component's TypeScript file.
+     * @param file The TypeScript source file.
+     * @returns A map of form control names to their validation rules.
+     */
     private extractValidationRules(file: ts.SourceFile): Map<string, string[]> {
         const validationRules = new Map<string, string[]>();
 
@@ -171,5 +198,4 @@ export class LogicAnalyzer {
 
         return validationRules;
     }
-
 }

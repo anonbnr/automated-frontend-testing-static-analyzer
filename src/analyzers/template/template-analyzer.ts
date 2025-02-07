@@ -2,15 +2,27 @@ import { TmplAstElement, TmplAstNode, TmplAstTemplate } from '@angular/compiler'
 import * as fs from 'fs';
 import * as path from "path";
 import * as ts from 'ts-morph';
-import { ComponentInfo } from '../models/component-info.js';
-import { parseAngularTemplate } from '../parsers/angular-template-parser.js';
-import { WidgetProcessor } from '../utils/widget-processor.js';
+import { ComponentInfo } from '../../models/component-info.js';
+import { parseAngularTemplate } from '../../parsers/angular-template-parser.js';
+import { WidgetProcessor } from './widgets/widget-processor.js';
 
+/**
+ * TemplateAnalyzer is responsible for analyzing Angular component templates.
+ * It extracts widgets, identifies nested components, and retrieves the component selector.
+ */
 export class TemplateAnalyzer {
+    /**
+     * Constructs a TemplateAnalyzer instance.
+     * @param decorator The TypeScript decorator for the component.
+     */
     constructor(
         private decorator: ts.Decorator
     ) { }
 
+    /**
+     * Extracts the inline template or loads the external template file if specified.
+     * @returns The template string if found, otherwise null.
+     */
     extractTemplate(): string | null {
         const args = this.decorator.getArguments();
 
@@ -47,11 +59,16 @@ export class TemplateAnalyzer {
         return null;
     }
 
+    /**
+     * Analyzes the given Angular template to extract widgets and nested components.
+     * @param template The template string to analyze.
+     * @returns A ComponentInfo object containing the extracted information.
+     */
     async analyze(template: string): Promise<ComponentInfo> {
         const ast = await parseAngularTemplate(template);
         const processor = new WidgetProcessor(template);
 
-        // Extract widgets
+        // Extract widgets from the template
         const widgets = processor.processWidgets(ast);
 
         console.log('Widgets: ', widgets);
@@ -78,7 +95,7 @@ export class TemplateAnalyzer {
         };
         traverse(ast);
 
-        // Fetch the selector
+        // Fetch the selector of the component
         const selector = this.decorator
             .getArguments()[0]
             ?.asKind(ts.SyntaxKind.ObjectLiteralExpression)

@@ -1,16 +1,31 @@
+import { RouteMapUtils } from "../analyzers/routes/route-info-utils.js";
 import { ComponentInfo } from "../models/component-info.js";
 import { NavigationGraph, Node } from "../models/navigation-graph.js";
 import { RouteMap } from "../models/route-info.js";
 import { WidgetEventMap, WidgetInfo } from "../models/widget-info.js";
-import { RouteMapUtils } from "../utils/route-info-utils.js";
 
+/**
+ * Constructs and manages the application's **navigation graph**.
+ * This graph maps **routes, widgets, and interactions** between components.
+ */
 export class NavigationGraphBuilder {
+    /**
+     * The navigation graph being built
+     */
     private graph: NavigationGraph = { nodes: [], transitions: [] };
 
+    /**
+     * Retrieves the current **navigation graph**.
+     * @returns The constructed navigation graph.
+     */
     getGraph(): NavigationGraph {
         return this.graph;
     }
 
+    /**
+     * Builds the **route nodes and transitions** from the provided `RouteMap`.
+     * @param routeMap The map of application routes.
+     */
     buildRoutes(routeMap: RouteMap): void {
         for (const { route } of routeMap.components) {
             this.addRoute(`/${route}`);
@@ -32,18 +47,36 @@ export class NavigationGraphBuilder {
         }
     }
 
+    /**
+     * Adds a **route node** to the graph.
+     * @param route The route path (e.g., `/dashboard`).
+     */
     private addRoute(route: string): void {
         this.graph.nodes.push({ id: route, type: 'route' });
     }
+
+    /**
+     * Adds a **global component node** to the graph.
+     * @param globalId The ID of the global component.
+     */
 
     private addGlobal(globalId: string): void {
         this.graph.nodes.push({ id: globalId, type: 'global' });
     }
 
+    /**
+     * Adds a **shared component node** to the graph.
+     * @param sharedId The ID of the shared component.
+     */
     private addShared(sharedId: string): void {
         this.graph.nodes.push({ id: sharedId, type: 'shared' });
     }
 
+    /**
+     * Creates a **redirect transition** between two routes.
+     * @param from The source route.
+     * @param to The target route.
+     */
     private addRouteRedirect(from: string, to: string): void {
         this.graph.transitions.push({
             from,
@@ -52,6 +85,12 @@ export class NavigationGraphBuilder {
         });
     }
 
+    /**
+     * Builds the **navigation graph** for a component, linking its widgets and interactions.
+     * @param component The component to process.
+     * @param widgetEventMaps The event mappings for widgets.
+     * @param route The route associated with the component.
+     */
     buildComponentGraph(
         component: ComponentInfo,
         widgetEventMaps: WidgetEventMap[],
@@ -63,6 +102,10 @@ export class NavigationGraphBuilder {
         this.buildNavigationTransitions(widgetEventMaps);
     }
 
+    /**
+     * Adds **widget nodes** to the graph.
+     * @param widgets The list of widgets in the component.
+     */
     private buildWidgets(widgets: WidgetInfo[]): void {
         for (const widget of widgets) {
             this.graph.nodes.push({
@@ -76,6 +119,11 @@ export class NavigationGraphBuilder {
         }
     }
 
+    /**
+     * Creates **contains transitions** between a component and its widgets.
+     * @param source The parent node (route/component).
+     * @param widgets The list of widgets contained within.
+     */
     buildContainsTransitions(source: string | undefined, widgets: WidgetInfo[]): void {
         if (source) {
             for (const widget of widgets) {
@@ -91,6 +139,10 @@ export class NavigationGraphBuilder {
         }
     }
 
+    /**
+    * Adds **global component transitions**.
+    * @param component The global component.
+    */
     buildGlobalTransitions(component: ComponentInfo): void {
         const globalNodeId = `${component.selector}`;
 
@@ -102,6 +154,12 @@ export class NavigationGraphBuilder {
         this.buildContainsTransitions(globalNodeId, component.widgets);
     }
 
+    /**
+     * Adds **shared component transitions**.
+     * @param component The shared component.
+     * @param routeMap The route map.
+     * @param componentMap List of all components.
+     */
     buildSharedTransitions(component: ComponentInfo, routeMap: RouteMap, componentMap: ComponentInfo[]): void {
         const sharedNodeId = `${component.selector}`;
 
@@ -122,6 +180,10 @@ export class NavigationGraphBuilder {
         });
     }
 
+    /**
+     * Adds **routerLink transitions** between widgets and routes.
+     * @param widgets The list of widgets.
+     */
     private buildRouterLinkTransitions(widgets: WidgetInfo[]): void {
         for (const widget of widgets) {
             let routerLink = widget.events.get("routerLink") || widget.attributes?.["routerLink"];
@@ -151,12 +213,21 @@ export class NavigationGraphBuilder {
         }
     }
 
+    /**
+     * Retrieves a **route node** from the graph.
+     * @param routeId The ID of the route.
+     * @returns The corresponding route node or `undefined`.
+     */
     private getRoute(routeId: string): Node | undefined {
         return this.graph.nodes.find(
             (node) => node.type === 'route' && node.id === routeId
         );
     }
 
+    /**
+     * Builds **navigation transitions** between widgets and backend services.
+     * @param widgetEventMaps The event mappings for widgets.
+     */
     private buildNavigationTransitions(widgetEventMaps: WidgetEventMap[]): void {
         for (const widgetEventMap of widgetEventMaps) {
             for (const eventContext of widgetEventMap.events) {

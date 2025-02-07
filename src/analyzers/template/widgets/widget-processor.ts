@@ -1,12 +1,22 @@
 import { AST, TmplAstElement, TmplAstNode } from "@angular/compiler";
-import { WidgetInfo } from "../models/widget-info.js";
+import { WidgetInfo } from "../../../models/widget-info.js";
 import { WidgetIDGenerator } from "./widget-id-generator.js";
 
+/**
+ * Processes an Angular template to extract **interactive widgets**.
+ */
 export class WidgetProcessor {
     private idGenerator: WidgetIDGenerator;
     private templateSource: string; // Full source code of the template
     private targetTags: Set<string>;
 
+    /**
+     * Creates an instance of `WidgetProcessor`.
+     *
+     * @param templateSource - The raw HTML content of the template.
+     * @param targetTags - The set of target widget tags to process.
+     * @param idGenerator - An instance of `WidgetIDGenerator` for assigning unique IDs.
+     */
     constructor(
         templateSource: string,
         targetTags: Set<string> = new Set([
@@ -19,6 +29,12 @@ export class WidgetProcessor {
         this.idGenerator = idGenerator;
     }
 
+    /**
+     * Extracts and processes **interactive widgets** from the template AST.
+     *
+     * @param nodes - The AST nodes of the Angular template.
+     * @returns A list of **extracted widgets**.
+     */
     processWidgets(nodes: TmplAstNode[]): WidgetInfo[] {
         const widgets: WidgetInfo[] = [];
 
@@ -100,6 +116,12 @@ export class WidgetProcessor {
         return widgets;
     }
 
+    /**
+     * Extracts the handler name from an Angular event binding.
+     *
+     * @param handler - The AST representation of the event handler.
+     * @returns The **normalized handler name**.
+     */
     private extractHandler(handler: AST): string {
         // Use `start` and `end` from `sourceSpan` to extract the corresponding code snippet
         const { start, end } = handler.sourceSpan;

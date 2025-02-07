@@ -1,14 +1,18 @@
 import * as path from "path";
 import * as ts from 'ts-morph';
 import { LogicAnalyzer } from '../analyzers/logic-analyzer.js';
-import { RouteAnalyzer } from '../analyzers/route-analyzer.js';
-import { TemplateAnalyzer } from '../analyzers/template-analyzer.js';
+import { RouteAnalyzer } from "../analyzers/routes/route-analyzer.js";
+import { RouteMapUtils } from "../analyzers/routes/route-info-utils.js";
+import { TemplateAnalyzer } from "../analyzers/template/template-analyzer.js";
 import { NavigationGraphBuilder } from '../builders/navigation-graph-builder.js';
 import { ComponentMap } from "../models/component-info.js";
 import { NavigationGraph } from '../models/navigation-graph.js';
 import { RouteMap } from "../models/route-info.js";
-import { RouteMapUtils } from "../utils/route-info-utils.js";
 
+/**
+ * The `StaticAnalyzer` is responsible for analyzing an Angular application to generate a
+ * navigation graph that includes component structure, routing information, and widget interactions.
+ */
 export class StaticAnalyzer {
     private project: ts.Project;
     private projectPath: string;
@@ -18,6 +22,10 @@ export class StaticAnalyzer {
     private graphBuilder: NavigationGraphBuilder;
     private componentMap: ComponentMap = { components: [] };
 
+    /**
+     * Initializes the `StaticAnalyzer` with the specified TypeScript configuration file.
+     * @param tsConfigPath Path to the `tsconfig.json` file of the Angular project.
+     */
     constructor(tsConfigPath: string) {
         // Initialize the TypeScript project
         this.project = new ts.Project({
@@ -29,6 +37,10 @@ export class StaticAnalyzer {
         this.logicAnalyzer = new LogicAnalyzer();
     }
 
+    /**
+     * Analyzes the Angular project to generate a navigation graph.
+     * @returns A promise resolving to the generated `NavigationGraph`.
+     */
     async analyze(): Promise<NavigationGraph> {
         // Step 1: Build route nodes and transitions and extract route map
         const routeMap = await this.extractRouteMap();
@@ -56,7 +68,10 @@ export class StaticAnalyzer {
                             routeMap.sharedComponents.add(componentInfo);
                         }
 
+                        // Extract and analyze widget interactions
                         const widgetEventMaps = this.logicAnalyzer.analyze(file, componentInfo.widgets, routeMap);
+
+                        // Build navigation graph for this component
                         this.graphBuilder.buildComponentGraph(componentInfo, widgetEventMaps, route);
                     }
                 }
@@ -72,6 +87,10 @@ export class StaticAnalyzer {
         return this.graphBuilder.getGraph();
     }
 
+    /**
+     * Extracts the routing information from the Angular project.
+     * @returns A promise resolving to a `RouteMap` containing component routes and redirections.
+     */
     private async extractRouteMap(): Promise<RouteMap> {
         // Step 1: Extract component and redirection routes
         const appModulePath = path.join(this.projectPath, 'src', 'app', 'app.module.ts');
@@ -79,6 +98,12 @@ export class StaticAnalyzer {
         return await this.routeAnalyzer.analyze(routeFile);
     }
 
+    /**
+     * Finds the route associated with a given component class.
+     * @param cls The TypeScript class declaration of a component.
+     * @param routeMap The `RouteMap` containing component routes.
+     * @returns The component's route as a string, or `undefined` if no route is found.
+     */
     private getComponentRoute(cls: ts.ClassDeclaration, routeMap: RouteMap) {
         let componentRoute = routeMap.components
             .find((componentRoute) => componentRoute.component === cls.getName());
@@ -93,6 +118,10 @@ export class StaticAnalyzer {
         return route;
     }
 
+    /**
+     * Resolves orphan widgets in shared components by linking them to appropriate parent routes or components.
+     * @param routeMap The `RouteMap` containing component and shared component information.
+     */
     private resolveOrphanWidgets(routeMap: RouteMap): void {
         if (routeMap.sharedComponents) {
             for (const component of routeMap.sharedComponents) {
@@ -115,6 +144,15 @@ export class StaticAnalyzer {
         }
     }
 
+    /**
+     * Determines whether a component is a global component.
+     * A component is considered global if:
+     * - It is the root component (`app-root`).
+     * - It has multiple parent components, all of which have defined routes.
+     * @param parents A list of parent component selectors.
+     * @param routeMap The `RouteMap` used to verify the existence of routes.
+     * @returns `true` if the component is a global component, `false` otherwise.
+     */
     private isGlobalComponent(parents: string[], routeMap: RouteMap): boolean {
         return parents.includes('app-root')
             || (parents.length > 1 && parents.every(parent => RouteMapUtils.getRouteFromSelector(parent, routeMap)));

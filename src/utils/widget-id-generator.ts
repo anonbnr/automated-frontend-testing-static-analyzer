@@ -16,13 +16,13 @@ export class WidgetIDGenerator {
             case 'A':
                 return this.generateContextualID(widget, ['routerLink', 'href', 'name', 'formControlName', 'value']) || this.generateDefaultID(widget) || this.generateSymbolicID(widget);
 
-            case 'INPUT':
-                return this.generateContextualID(widget, ['name', 'formControlName', 'placeholder']) || this.generateDefaultID(widget) || this.generateSymbolicID(widget);
+            case 'INPUT': case 'MAT-CHECKBOX': case 'MAT-RADIO-GROUP': case 'MAT-RADIO-BUTTON': case 'MAT-BUTTON-TOGGLE-GROUP': case 'MAT-BUTTON-TOGGLE':
+                return this.generateContextualID(widget, ['name', 'formControlName', 'value', 'placeholder']) || this.generateDefaultID(widget) || this.generateSymbolicID(widget);
 
             case 'FORM':
                 return this.generateContextualID(widget, ['name']) || this.generateBindingID(widget) || this.generateSymbolicID(widget);
 
-            case 'SELECT':
+            case 'SELECT': case 'MAT-SELECT':
                 return this.generateContextualID(widget, ['name', 'formControlName']) || this.generateSymbolicID(widget);
 
             case 'TEXTAREA':

@@ -56,7 +56,7 @@ export class StaticAnalyzer {
                             routeMap.sharedComponents.add(componentInfo);
                         }
 
-                        const widgetEventMaps = this.logicAnalyzer.analyze(file, componentInfo.widgets);
+                        const widgetEventMaps = this.logicAnalyzer.analyze(file, componentInfo.widgets, routeMap);
                         this.graphBuilder.buildComponentGraph(componentInfo, widgetEventMaps, route);
                     }
                 }
@@ -80,15 +80,16 @@ export class StaticAnalyzer {
     }
 
     private getComponentRoute(cls: ts.ClassDeclaration, routeMap: RouteMap) {
-        let route = routeMap.components
-            .find((componentRoute) => componentRoute.component === cls.getName())
-            ?.route;
+        let componentRoute = routeMap.components
+            .find((componentRoute) => componentRoute.component === cls.getName());
 
-        if (!route)
+        if (!componentRoute) {
             console.log(`Component ${cls.getName()} has no associated route.`);
-        else
-            route = `/${route}`;
+            return undefined;
+        }
 
+        const route = `/${componentRoute.route}`;
+        console.log(`Component ${cls.getName()} matched with route ${route}`);
         return route;
     }
 

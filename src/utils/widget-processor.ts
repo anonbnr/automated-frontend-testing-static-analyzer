@@ -9,7 +9,10 @@ export class WidgetProcessor {
 
     constructor(
         templateSource: string,
-        targetTags: Set<string> = new Set(['button', 'input', 'a', 'form', 'select', 'textarea']),
+        targetTags: Set<string> = new Set([
+            'button', 'input', 'a', 'form', 'select', 'textarea',
+            'mat-select', 'mat-checkbox', 'mat-radio-group', 'mat-radio-button', 'mat-button-toggle-group', 'mat-button-toggle'
+        ]),
         idGenerator: WidgetIDGenerator = new WidgetIDGenerator()) {
         this.templateSource = templateSource;
         this.targetTags = targetTags;
@@ -31,11 +34,24 @@ export class WidgetProcessor {
                         const events = new Map<string, string>();
                         const attributes: any = {};
 
-                        // Extract routerLink for anchors
-                        if (node.name.toLowerCase() === 'a') {
-                            const anchorAttr = node.attributes.find(attr => attr.name === 'routerLink');
-                            if (anchorAttr)
-                                events.set(anchorAttr.name, anchorAttr.value);
+                        // Extract routerLink for elements
+                        const routerLinkAttr =
+                            node.attributes.find(attr => attr.name === 'routerLink')
+                            || node.inputs.find(attr => attr.name === "routerLink" || attr.name === "[routerLink]");
+                        if (routerLinkAttr) {
+                            let extractedValue = routerLinkAttr.value.toString().trim();
+
+                            // Match value inside single quotes and extract
+                            const match = extractedValue.match(/'([^']+)'/);
+                            if (match) {
+                                extractedValue = match[1];
+                            }
+
+                            // Remove extra spaces and inline metadata
+                            extractedValue = extractedValue.split(" in inline@")[0].trim();
+
+                            // Store cleaned routerLink
+                            events.set('routerLink', extractedValue);
                         }
 
                         // Extract events

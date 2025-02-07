@@ -17,44 +17,58 @@ export class RouteAnalyzer {
         for (const declaration of routeFile.getVariableDeclarations()) {
             if (this.routeVariableNames.includes(declaration.getName())) {
                 const initializer = declaration.getInitializer();
+                if (initializer?.isKind(ts.SyntaxKind.ArrayLiteralExpression))
+                    await this.processRoutes(initializer.getElements(), routeMap);
+            }
+        }
 
-                if (initializer?.isKind(ts.SyntaxKind.ArrayLiteralExpression)) {
-                    for (const element of initializer.getElements()) {
-                        if (element.isKind(ts.SyntaxKind.ObjectLiteralExpression)) {
-                            if (this.hasPathProp(element)) {
-                                // Extract 'path' if available
-                                const routePath = this.extractPath(element);
+        return routeMap;
+    }
 
-                                if (routePath) {
-                                    // Extract 'component' if available
-                                    const componentName = this.extractComponent(element);
-                                    if (componentName) {
-                                        routeMap.components.push({
-                                            component: componentName,
-                                            route: routePath
-                                        });
-                                        console.log(`Component ${componentName} mapped to route ${routePath}`); // Debug log
-                                    }
-                                }
+    private async processRoutes(
+        elements: ts.Expression[],
+        routeMap: RouteMap,
+        parentPath: string = ""
+    ): Promise<void> {
+        for (const element of elements) {
+            if (element.isKind(ts.SyntaxKind.ObjectLiteralExpression)) {
+                if (this.hasPathProp(element)) {
+                    // Extract 'path' if available
+                    const path = this.extractPath(element);
+                    const fullPath = parentPath ? `${parentPath}/${path}` : path;
+                    if (fullPath) {
+                        // Extract 'component' if available
+                        const componentName = this.extractComponent(element);
+                        if (componentName) {
+                            routeMap.components.push({
+                                component: componentName,
+                                route: fullPath
+                            });
+                            console.log(`Component ${componentName} mapped to route ${fullPath}`);
+                        }
+                    }
 
-                                // Extract 'redirectTo' if available
-                                const redirectTo = this.extractRedirectTo(element);
-                                if (redirectTo) {
-                                    // await this.graphBuilder.addRouteRedirect(routeId, `/${redirectTo}`);
-                                    routeMap.redirections.push({
-                                        route: routePath,
-                                        redirectTo
-                                    });
-                                    console.log(`Redirect added: ${routePath} -> ${redirectTo}`); // Debug log
-                                }
-                            }
+                    // Extract 'redirectTo' if available
+                    const redirectTo = this.extractRedirectTo(element);
+                    if (redirectTo) {
+                        routeMap.redirections.push({
+                            route: fullPath,
+                            redirectTo
+                        });
+                        console.log(`Redirect added: ${fullPath} -> ${redirectTo}`);
+                    }
+
+                    // Recursively process child routes
+                    const childrenProp = element.getProperty('children');
+                    if (childrenProp?.isKind(ts.SyntaxKind.PropertyAssignment)) {
+                        const childRoutes = childrenProp.getInitializer()?.asKind(ts.SyntaxKind.ArrayLiteralExpression);
+                        if (childRoutes) {
+                            await this.processRoutes(childRoutes.getElements(), routeMap, fullPath);
                         }
                     }
                 }
             }
         }
-
-        return routeMap;
     }
 
     private hasPathProp(element: ts.ObjectLiteralExpression): boolean {
@@ -73,7 +87,22 @@ export class RouteAnalyzer {
         if (pathProp?.isKind(ts.SyntaxKind.PropertyAssignment))
             routePath = pathProp.getInitializer()?.getText().replace(/['"`]/g, "") || "";
 
+        // Check for dynamic segments (e.g., ':id')
+        const dynamicSegment = this.extractDynamicSegment(element);
+        if (dynamicSegment) {
+            routePath = `${routePath}/:${dynamicSegment}`;
+        }
+
         return routePath;
+    }
+
+    private extractDynamicSegment(element: ts.ObjectLiteralExpression): string | null {
+        const paramsProp = element.getProperty('params'); // Assuming dynamic segments defined here
+        if (paramsProp?.isKind(ts.SyntaxKind.PropertyAssignment)) {
+            const paramValue = paramsProp.getInitializer()?.getText().replace(/['"`]/g, "");
+            return paramValue || null;
+        }
+        return null;
     }
 
     private extractComponent(element: ts.ObjectLiteralExpression): string {

@@ -1,8 +1,9 @@
 import * as ts from 'ts-morph';
 import { EventContext, EventHandlerCallContext, WidgetEventMap, WidgetInfo } from '../models/widget-info.js';
+import { RouteMap } from '../models/route-info.js';
 
 export class LogicAnalyzer {
-    analyze(file: ts.SourceFile, widgets: WidgetInfo[]): WidgetEventMap[] {
+    analyze(file: ts.SourceFile, widgets: WidgetInfo[], routeMap: RouteMap): WidgetEventMap[] {
         const widgetEventMaps: WidgetEventMap[] = [];
         const methods = this.extractMethods(file);
 
@@ -17,7 +18,7 @@ export class LogicAnalyzer {
 
                 const handlerBody = methods.get(handler);
                 if (handlerBody) {
-                    const calls = this.extractHandlerCalls(handlerBody);
+                    const calls = this.extractHandlerCalls(handlerBody, routeMap);
                     eventContexts.push({
                         event,
                         handler,
@@ -55,33 +56,72 @@ export class LogicAnalyzer {
         return methods;
     }
 
-    private extractHandlerCalls(handler: ts.MethodDeclaration): EventHandlerCallContext[] {
-        const calls: EventHandlerCallContext[] = [];
+    private extractHandlerCalls(handler: ts.MethodDeclaration, routeMap: RouteMap): EventHandlerCallContext[] {
+        const uniqueCalls = new Map<string, EventHandlerCallContext>(); // Store unique calls
 
         // Look for CallExpressions in the method body
         const callExpressions = handler.getDescendantsOfKind(ts.SyntaxKind.CallExpression);
 
         for (const call of callExpressions) {
             const caller = call.getExpression().getText();
-            const args = call.getArguments().map((arg) => arg.getText().replace(/[\[\]'`"]/g, ''));
+            const args = call.getArguments();
+
+            let resolvedRoute = "";
+            let metadataParams: string[] = [];
 
             if (caller.includes('navigate')) {
-                calls.push({
-                    caller: caller, // e.g., this.router.navigate
-                    called: args[0] || '', // The target route
-                    data: [],
-                });
+
+                if (args.length === 1 && args[0].isKind(ts.SyntaxKind.ArrayLiteralExpression)) {
+                    const arrayArgs = args[0].asKind(ts.SyntaxKind.ArrayLiteralExpression)!.getElements();
+                    const routeBase = arrayArgs[0].getText().replace(/['"`]/g, ""); // First argument
+                    const routeParams = arrayArgs.slice(1).map(param => param.getText()); // Extract params
+
+                    console.log(`Base route: ${routeBase}`);
+                    console.log(`Route params: ${routeParams}`);
+
+                    // Check if this route exists in the routeMap and if it has dynamic segments
+                    for (const componentRoute of routeMap.components) {
+                        if (componentRoute.route.startsWith(routeBase.substring(1))) {
+                            const dynamicParts = componentRoute.route.split('/').filter(part => part.startsWith(':'));
+
+                            console.log(`Dynamic route parts: ${dynamicParts}`);
+
+                            if (dynamicParts.length > 0 && routeParams.length === dynamicParts.length) {
+                                // Replace dynamic parameters correctly
+                                resolvedRoute = `/${componentRoute.route}`;
+                                metadataParams = routeParams; // Store real dynamic values
+
+                                // Replace placeholders with actual dynamic references
+                                dynamicParts.forEach((part, index) => {
+                                    resolvedRoute = resolvedRoute.replace(part, `:${part.substring(1)}`);
+                                });
+
+                                console.log(`Final resolved route: ${resolvedRoute}`);
+                                console.log(`Metadata Params: ${metadataParams}`);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             else if (caller.includes('Service') || caller.includes('service')) {
-                calls.push({
-                    caller: caller, // e.g., this.userService.addUser
-                    called: '/backend',
-                    data: args, // Data passed to the call
+                resolvedRoute = "/backend";
+            }
+
+            // Generate a unique key for the call
+            const callKey = `${caller}->${resolvedRoute}`;
+
+            // Only store the call if it's not already in the map
+            if (!uniqueCalls.has(callKey) || uniqueCalls.get(callKey)!!.data.length < metadataParams.length) {
+                uniqueCalls.set(callKey, {
+                    caller,
+                    called: resolvedRoute,
+                    data: metadataParams
                 });
             }
         }
 
-        return calls;
+        return Array.from(uniqueCalls.values());
     }
 
     private extractValidationRules(file: ts.SourceFile): Map<string, string[]> {

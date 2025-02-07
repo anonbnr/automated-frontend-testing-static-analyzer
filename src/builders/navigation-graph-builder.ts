@@ -79,8 +79,14 @@ export class NavigationGraphBuilder {
     buildContainsTransitions(source: string | undefined, widgets: WidgetInfo[]): void {
         if (source) {
             for (const widget of widgets) {
-                this.graph.transitions.push({ from: source, to: widget.id, event: "contains" });
-                console.log(`contains transition added: ${source} -> ${widget.id}`);
+                const transitionExists = this.graph.transitions.some(
+                    (t) => t.from === source && t.to === widget.id && t.event === "contains"
+                );
+
+                if (!transitionExists) {
+                    this.graph.transitions.push({ from: source, to: widget.id, event: "contains" });
+                    console.log(`Contains transition added: ${source} -> ${widget.id}`);
+                }
             }
         }
     }
@@ -118,20 +124,29 @@ export class NavigationGraphBuilder {
 
     private buildRouterLinkTransitions(widgets: WidgetInfo[]): void {
         for (const widget of widgets) {
-            const routerLink = widget.events.get("routerLink");
+            let routerLink = widget.events.get("routerLink") || widget.attributes?.["routerLink"];
             if (routerLink) {
                 const targetRoute = routerLink.startsWith('/') ? routerLink : `/${routerLink}`;
                 const routeNode = this.getRoute(targetRoute);
 
-                if (routeNode) {
+                if (!routeNode) {
+                    console.warn(`Unmatched routerLink: ${routerLink} for widget ${widget.id}.`);
+                    continue;
+                }
+
+                const transitionExists = this.graph.transitions.some(
+                    (t) => t.from === widget.id && t.to === routeNode.id && t.event === 'routerLink'
+                );
+
+                if (!transitionExists) {
                     this.graph.transitions.push({
                         from: widget.id,
-                        to: targetRoute,
+                        to: routeNode.id,
                         event: 'routerLink',
                     });
-                    console.log(`routerLink transition added: ${widget.id} -> ${targetRoute}`);
-                } else
-                    console.warn(`Unmatched routerLink: ${routerLink} for widget ${widget.id}`);
+
+                    console.log(`routerLink transition added: ${widget.id} -> ${routeNode.id}`);
+                }
             }
         }
     }
@@ -151,14 +166,21 @@ export class NavigationGraphBuilder {
                         console.log('Virtual route node added: /backend');
                     }
 
-                    this.graph.transitions.push({
-                        from: widgetEventMap.widgetID,
-                        to: called,
-                        event: eventContext.event,
-                        metadata: { data }
-                    });
+                    // Check if the transition already exists before adding
+                    const transitionExists = this.graph.transitions.some(
+                        (t) => t.from === widgetEventMap.widgetID && t.to === called && t.event === eventContext.event
+                    );
 
-                    console.log(`${eventContext.event} transition added: ${widgetEventMap.widgetID} -> ${called}`);
+                    if (called && called.trim() !== "" && !transitionExists) {
+                        this.graph.transitions.push({
+                            from: widgetEventMap.widgetID,
+                            to: called,
+                            event: eventContext.event,
+                            metadata: { data }
+                        });
+
+                        console.log(`Transition added: ${widgetEventMap.widgetID} -> ${called} [${eventContext.event}]`);
+                    }
                 }
             }
         }

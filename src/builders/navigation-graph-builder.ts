@@ -2,7 +2,8 @@ import { RouteMapUtils } from "../analyzers/routes/route-info-utils.js";
 import { ComponentInfo } from "../models/component-info.js";
 import { NavigationGraph, Node } from "../models/navigation-graph.js";
 import { RouteMap } from "../models/route-info.js";
-import { WidgetEventMap, WidgetInfo } from "../models/widget-info.js";
+import { WidgetInfo } from "../models/widget-info.js";
+import { WidgetEventMap } from "../models/event-info.js";
 
 /**
  * Constructs and manages the application's **navigation graph**.
@@ -55,6 +56,19 @@ export class NavigationGraphBuilder {
         this.graph.nodes.push({ id: route, type: 'route' });
     }
 
+        /**
+     * Creates a **redirect transition** between two routes.
+     * @param from The source route.
+     * @param to The target route.
+     */
+    private addRouteRedirect(from: string, to: string): void {
+        this.graph.transitions.push({
+            from,
+            to,
+            "event": "redirect"
+        });
+    }
+
     /**
      * Adds a **global component node** to the graph.
      * @param globalId The ID of the global component.
@@ -72,18 +86,6 @@ export class NavigationGraphBuilder {
         this.graph.nodes.push({ id: sharedId, type: 'shared' });
     }
 
-    /**
-     * Creates a **redirect transition** between two routes.
-     * @param from The source route.
-     * @param to The target route.
-     */
-    private addRouteRedirect(from: string, to: string): void {
-        this.graph.transitions.push({
-            from,
-            to,
-            "event": "redirect"
-        });
-    }
 
     /**
      * Builds the **navigation graph** for a component, linking its widgets and interactions.

@@ -33,6 +33,8 @@ export class StaticAnalyzer {
         });
         this.projectPath = tsConfigPath.substring(0, tsConfigPath.lastIndexOf(path.sep));
         this.graphBuilder = new NavigationGraphBuilder();
+
+        //FIXME: Why not initiallizing The templateAnalyzer
         this.routeAnalyzer = new RouteAnalyzer();
         this.logicAnalyzer = new LogicAnalyzer();
     }
@@ -72,10 +74,12 @@ export class StaticAnalyzer {
                         const widgetEventMaps = this.logicAnalyzer.analyze(file, componentInfo.widgets, routeMap);
 
                         // Build navigation graph for this component
+                        // FIXME: Why building the graph by component and not once using the ComponentMap
                         this.graphBuilder.buildComponentGraph(componentInfo, widgetEventMaps, route);
                     }
                 }
             }
+            
         }
         // console.log('Component Map:', this.componentMap);
         // console.log('Route Map:', routeMap);
@@ -105,6 +109,7 @@ export class StaticAnalyzer {
      * @returns The component's route as a string, or `undefined` if no route is found.
      */
     private getComponentRoute(cls: ts.ClassDeclaration, routeMap: RouteMap) {
+        // FIXME: Do we compare with the selector value or the class name
         let componentRoute = routeMap.components
             .find((componentRoute) => componentRoute.component === cls.getName());
 

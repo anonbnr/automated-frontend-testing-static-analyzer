@@ -79,6 +79,7 @@ export class TemplateAnalyzer {
             nodes.forEach((node) => {
                 if (node instanceof TmplAstElement) {
                     // console.log('Element: ', node.name);
+                    // FIXME: Better to do node.name not in AllHtmlTagsList
                     if (node.name.startsWith('app-')) {
                         nestedComponents.push(node.name);
                         // console.log(`Nested Component Found: ${node.name}`);

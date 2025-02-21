@@ -26,6 +26,7 @@ app.use(bodyParser.json()); // Parse JSON request bodies
  * - 400 Bad Request: If `projectRoot` is missing or `tsconfig.json` is not found.
  * - 500 Internal Server Error: If an error occurs during analysis.
  */
+
 app.post('/analyze', async (req: Request, res: Response) => {
     const { projectRoot } = req.body;
 

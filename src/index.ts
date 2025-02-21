@@ -3,8 +3,8 @@ import * as path from "path";
 import { StaticAnalyzer } from "./orchestrators/static-analyzer.js";
 
 async function main() {
-  const tsConfigPath = 'C:/Users/basha/git/github/OcPostProject/tsconfig.json';
-  const outputFilePath = 'assets/json/graph.json';
+  const tsConfigPath = '../tsconfig.json';
+  const outputFilePath = '../assets/json/graph.json';
   const analyzer = new StaticAnalyzer(tsConfigPath);
   
   const navigationGraph = await analyzer.analyze();

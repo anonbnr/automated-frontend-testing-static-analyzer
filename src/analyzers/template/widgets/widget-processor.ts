@@ -43,10 +43,10 @@ export class WidgetProcessor {
                 if (node instanceof TmplAstElement) {
                     // console.log(`Processing node: ${node.name}`);
                     // Process only targeted widgets
-                    if (this.targetTags.has(node.name.toLowerCase())) {
+                    if (this.targetTags.has(node.name.toLowerCase())) { //! if this node is a button, input etc
                         // console.log(`Detected widget: ${node.name}`);
                         const id = node.attributes.find((attr) => attr.name === 'id')?.value
-                            || this.idGenerator.generateID(node);
+                            || this.idGenerator.generateID(node); //! We either take the original Id or we generate one
                         const events = new Map<string, string>();
                         const attributes: any = {};
 
@@ -94,6 +94,8 @@ export class WidgetProcessor {
                         if (attributes.max) validationRules.push('max');
 
                         // Check for form submission triggers
+
+                        // TODO: Verify triggersFormSubmission = (node.name === 'input' || node.name === 'button') && attributes.type === 'submit'
                         const triggersFormSubmission = node.name === 'button' && attributes.type === 'submit';
 
                         widgets.push({

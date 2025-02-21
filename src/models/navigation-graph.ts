@@ -46,7 +46,7 @@ export interface Transition {
     to: string;
 
     /**
-     * Event that triggers this transition (e.g., "click", "submit").
+     * Event that triggers this transition (e.g., "click", "submit", "contains").
      */
     event: string;
 

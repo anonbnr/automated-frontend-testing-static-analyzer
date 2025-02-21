@@ -1,6 +1,7 @@
 import * as ts from 'ts-morph';
 import { RouteMap } from '../models/route-info.js';
-import { EventContext, EventHandlerCallContext, WidgetEventMap, WidgetInfo } from '../models/widget-info.js';
+import { EventContext, EventHandlerCallContext, WidgetEventMap } from '../models/event-info.js';
+import { WidgetInfo } from '../models/widget-info.js';
 
 /**
  * LogicAnalyzer is responsible for analyzing the business logic of an Angular component.

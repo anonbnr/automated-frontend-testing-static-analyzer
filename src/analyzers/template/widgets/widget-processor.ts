@@ -20,8 +20,8 @@ export class WidgetProcessor {
     constructor(
         templateSource: string,
         targetTags: Set<string> = new Set([
-            'button', 'input', 'a', 'form', 'select', 'textarea',
-            'mat-select', 'mat-checkbox', 'mat-radio-group', 'mat-radio-button', 'mat-button-toggle-group', 'mat-button-toggle'
+            'button', 'input', 'a', 'form', 'select', 'option', 'textarea',
+            'mat-select', 'mat-option', 'mat-checkbox', 'mat-radio-group', 'mat-radio-button', 'mat-button-toggle-group', 'mat-button-toggle'
         ]),
         idGenerator: WidgetIDGenerator = new WidgetIDGenerator()) {
         this.templateSource = templateSource;
@@ -85,6 +85,32 @@ export class WidgetProcessor {
                         if (node.name === 'input') {
                             attributes.type = attributes.type || 'text';
                         }
+                        // console.log("##################################");
+                        // console.log(node.name);
+                        // console.log("##################################");
+
+                        if (node.name === 'mat-select') {
+                            //TODO: extract values of option tags
+                            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                            // let values = []
+                            // let i = 0
+                            // while (i < node.children.length) {
+                            //     let option = node.children[i++];
+                            //     console.log("##################################");
+                            //     console.log(option);
+                            //     console.log("%%%%%%%%%%%%%%%%%%%%%%%%")
+                            // }
+
+                            // traverse(node.children);
+                            // console.log(values)
+                        }
+
+
 
                         // Check for validation attributes
                         const validationRules: string[] = [];

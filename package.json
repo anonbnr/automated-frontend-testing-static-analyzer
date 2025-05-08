@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "npm run build && node dist/api/api.js",
-    "build": "tsc"
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "dev": "concurrently \"npm run watch\" \"nodemon dist/api/api.js\""
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,8 @@
     "@types/express": "^4.17.17",
     "@types/node": "^22.10.1",
     "@types/uuid": "^10.0.0",
+    "concurrently": "^9.1.2",
+    "nodemon": "^3.1.9",
     "ts-morph": "^24.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2"

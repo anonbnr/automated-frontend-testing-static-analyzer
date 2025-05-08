@@ -56,11 +56,11 @@ export class NavigationGraphBuilder {
         this.graph.nodes.push({ id: route, type: 'route' });
     }
 
-        /**
-     * Creates a **redirect transition** between two routes.
-     * @param from The source route.
-     * @param to The target route.
-     */
+    /**
+ * Creates a **redirect transition** between two routes.
+ * @param from The source route.
+ * @param to The target route.
+ */
     private addRouteRedirect(from: string, to: string): void {
         this.graph.transitions.push({
             from,
@@ -100,6 +100,7 @@ export class NavigationGraphBuilder {
     ): void {
         this.buildWidgets(component.widgets);
         this.buildContainsTransitions(route, component.widgets);
+        this.buildWidgetsValueTransitions(component.widgets);
         this.buildRouterLinkTransitions(component.widgets);
         this.buildNavigationTransitions(widgetEventMaps);
     }
@@ -116,7 +117,11 @@ export class NavigationGraphBuilder {
                 attributes: widget.attributes,
                 validationRules: widget.validationRules,
                 triggersFormSubmission: widget.triggersFormSubmission
+                //TODO: we can add children here
             });
+            if (widget.children && widget.children.length > 0) {
+                this.buildWidgets(widget.children)
+            }
             console.log(`Widget node added: ID: ${widget.id}, Type: ${widget.type}`);
         }
     }
@@ -136,6 +141,42 @@ export class NavigationGraphBuilder {
                 if (!transitionExists) {
                     this.graph.transitions.push({ from: source, to: widget.id, event: "contains" });
                     console.log(`Contains transition added: ${source} -> ${widget.id}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Creates **contains transitions** between a component and its widgets.
+     * @param source The parent node (route/component).
+     * @param widgets The list of widgets contained within.
+     */
+    buildWidgetsValueTransitions(widgets: WidgetInfo[]): void {
+        for (const widget of widgets) {
+            if (widget.children && widget.children.length > 0) {
+                for (const child of widget.children) {
+                    const transitionExists = this.graph.transitions.some(
+                        (t) => t.from === widget.id && t.to === child.id && t.event === "contains"
+                    );
+
+                    if (!transitionExists) {
+                        this.graph.transitions.push({ from: widget.id, to: child.id, event: "contains" });
+                        console.log(`Value transition added: ${widget.id} -> ${child.id}`);
+                    }
+
+                    if (child.children && child.children.length > 0) {
+                        for (const value of child.children) {
+                            const transitionExists = this.graph.transitions.some(
+                                (t) => t.from === child.id && t.to === value.id && t.event === "value"
+                            );
+
+                            if (!transitionExists) {
+                                this.graph.transitions.push({ from: child.id, to: value.id, event: "value" });
+                                console.log(`Value transition added: ${widget.id} -> ${child.id}`);
+                            }
+                        }
+                    }
+
                 }
             }
         }

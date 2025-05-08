@@ -1,0 +1,10 @@
+{
+    "watch": [
+        "dist"
+    ],
+    "ext": "js,json",
+    "ignore": [
+        "dist/**/*.test.js"
+    ],
+    "delay": "1000"
+}

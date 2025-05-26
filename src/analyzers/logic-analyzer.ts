@@ -18,42 +18,54 @@ export class LogicAnalyzer {
     analyze(file: ts.SourceFile, widgets: WidgetInfo[], routeMap: RouteMap): WidgetEventMap[] {
         const widgetEventMaps: WidgetEventMap[] = [];
         const methods = this.extractMethods(file);
-
-        const validationRules = this.extractValidationRules(file); // Extract validation rules
-        console.log('Validation Rules Map:', Array.from(validationRules.entries()));
+        const validationRules = this.extractValidationRules(file);
 
         for (const widget of widgets) {
             const eventContexts: EventContext[] = [];
 
             for (const [event, handler] of widget.events) {
-                if (event === "routerLink") continue;
+            if (event === "routerLink") continue;
 
-                const handlerBody = methods.get(handler);
-                if (handlerBody) {
-                    const calls = this.extractHandlerCalls(handlerBody, routeMap);
-                    eventContexts.push({
-                        event,
-                        handler,
-                        calls
-                    });
-                }
-                else
-                    console.warn(`Handler ${handler} for event ${event} not found.`);
+            const handlerBody = methods.get(handler);
+            if (handlerBody) {
+                const calls = this.extractHandlerCalls(handlerBody, routeMap);
+                eventContexts.push({
+                event,
+                handler,
+                calls
+                });
+            } else {
+                console.warn(`Handler ${handler} for event ${event} not found.`);
+            }
             }
 
             // Map validation rules to the widget
             const controlName = widget.attributes?.formControlName;
-            console.log('Widget Control Name:', controlName);
+            
+            if (controlName && validationRules.has(controlName)) {
+            widget.validationRules = validationRules.get(controlName);
+            } else {
+            // NOUVEAU: Essayer de mapper par l'ID du widget
+            const widgetIdParts = widget.id.split('__');
+            let mappedValidations = false;
+            
+            for (const [validationKey, validationValue] of validationRules.entries()) {
+                if (widget.id.toLowerCase().includes(validationKey.toLowerCase()) || 
+                    widgetIdParts.some(part => part.toLowerCase() === validationKey.toLowerCase())) {
+                widget.validationRules = validationValue;
+                mappedValidations = true;
+                break;
+                }
+            }
+            }
 
-            if (controlName && validationRules.has(controlName))
-                widget.validationRules = validationRules.get(controlName);
-
-            if (eventContexts.length > 0)
-                widgetEventMaps.push({ widgetID: widget.id, events: eventContexts });
+            if (eventContexts.length > 0) {
+            widgetEventMaps.push({ widgetID: widget.id, events: eventContexts });
+            }
         }
 
         return widgetEventMaps;
-    }
+        }
 
     /**
      * Extracts method declarations from a TypeScript class.

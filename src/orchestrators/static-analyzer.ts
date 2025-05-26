@@ -8,7 +8,7 @@ import { NavigationGraphBuilder } from '../builders/navigation-graph-builder.js'
 import { ComponentMap } from "../models/component-info.js";
 import { NavigationGraph } from '../models/navigation-graph.js';
 import { RouteMap } from "../models/route-info.js";
-
+import { WidgetInfo } from "../models/widget-info.js";
 /**
  * The `StaticAnalyzer` is responsible for analyzing an Angular application to generate a
  * navigation graph that includes component structure, routing information, and widget interactions.
@@ -70,8 +70,9 @@ export class StaticAnalyzer {
                             routeMap.sharedComponents.add(componentInfo);
                         }
 
-                        // Extract and analyze widget interactions
-                        const widgetEventMaps = this.logicAnalyzer.analyze(file, componentInfo.widgets, routeMap);
+                        // Extract and analyze widget interactions                                                
+                        const allWidgets = this.collectAllWidgets(componentInfo.widgets);
+                        const widgetEventMaps = this.logicAnalyzer.analyze(file, allWidgets, routeMap);
 
                         // Build navigation graph for this component
                         // FIXME: Why building the graph by component and not once using the ComponentMap
@@ -89,6 +90,24 @@ export class StaticAnalyzer {
 
         // Return the built graph
         return this.graphBuilder.getGraph();
+    }
+    /**
+     * Collecte récursivement tous les widgets (parents et enfants)
+     */
+    private collectAllWidgets(widgets: WidgetInfo[]): WidgetInfo[] {
+    const allWidgets: WidgetInfo[] = [];
+    
+    function collectRecursive(widgetList: WidgetInfo[]) {
+        for (const widget of widgetList) {
+        allWidgets.push(widget);
+        if (widget.children && widget.children.length > 0) {
+            collectRecursive(widget.children);
+        }
+        }
+    }
+    
+    collectRecursive(widgets);
+    return allWidgets;
     }
 
     /**

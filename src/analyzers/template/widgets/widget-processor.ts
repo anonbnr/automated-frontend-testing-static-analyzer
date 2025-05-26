@@ -96,10 +96,12 @@ export class WidgetProcessor {
 
                         // Check for validation attributes
                         const validationRules: string[] = [];
-                        if (attributes.required) validationRules.push('required');
+                        if (attributes.required !== undefined) validationRules.push('required');
                         if (attributes.pattern) validationRules.push('pattern');
                         if (attributes.min) validationRules.push('min');
                         if (attributes.max) validationRules.push('max');
+                        if (attributes.minlength) validationRules.push('minLength');
+                        if (attributes.maxlength) validationRules.push('maxLength');
 
                         // Check for form submission triggers
                         const triggersFormSubmission = node.name === 'button' && attributes.type === 'submit';

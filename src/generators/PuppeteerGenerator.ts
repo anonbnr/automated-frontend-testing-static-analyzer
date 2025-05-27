@@ -24,6 +24,37 @@ function delay(time) {
   getFileExtension(): string {
     return '.js';
   }
+  /**
+ * ✅ NOUVEAU : Extrait le formControlName depuis l'ID généré
+ * Ex: "input__name__uuid" → "name"
+ */
+private extractFormControlName(generatedId: string): string | null {
+  if (!generatedId || typeof generatedId !== 'string') return null;
+  
+  const parts = generatedId.split('__');
+  if (parts.length >= 3) {
+    // Pattern: "input__name__uuid" → "name"
+    // Pattern: "button__sign_up!__uuid" → "sign_up!"
+    return parts[1];
+  }
+  return null;
+}
+
+/**
+ * ✅ NOUVEAU : Extrait le texte du bouton depuis l'ID généré
+ * Ex: "button__sign_up!__uuid" → "Sign Up!"
+ */
+private extractButtonText(generatedId: string): string | null {
+  const formControlName = this.extractFormControlName(generatedId);
+  if (!formControlName) return null;
+  
+  // Convertir "sign_up!" → "Sign Up!"
+  return formControlName
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+    .replace(/!/g, '!'); // Garder les caractères spéciaux
+}
 
   private indent(code: string, level: number = 1): string {
     const prefix = '  '.repeat(level); // 2 espaces
@@ -156,86 +187,103 @@ runAllTests();
     code += `  console.log("Test '${fnName}' completed.");\n`;
     return code + `}`;
   }
+  /**
+ * ✅ NOUVEAU : Convertit en camelCase
+ */
+private toCamelCase(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toLowerCase() + 
+         str.slice(1)
+            .replace(/[_-]([a-z])/g, (_, char) => char.toUpperCase());
+}
+
+/**
+ * ✅ NOUVEAU : Convertit en PascalCase  
+ */
+private toPascalCase(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + 
+         str.slice(1)
+            .replace(/[_-]([a-z])/g, (_, char) => char.toUpperCase());
+}
 
   private generateInputCode(id: string, value: any, waitTimeout: number): string {
-    return `
+  const formControlName = this.extractFormControlName(id);
+  
+  return `
   try {
     let inputFound = false;
     
-    // Stratégie 1: Sélecteur par ID exact (input OU textarea)
-    try {
-      await page.waitForSelector('#${id}', { timeout: ${waitTimeout}, visible: true });
-      await page.focus('#${id}');
-      await page.evaluate((selector) => {
-        document.querySelector(selector).value = '';
-      }, '#${id}');
-      await page.type('#${id}', "${value}");
-      inputFound = true;
-      console.log("Filled input/textarea '${id}' with value '${value}' by exact ID");
-    } catch (error) {
-      console.log("Strategy 1 failed for '${id}': ID exact not found");
+    // ✅ STRATÉGIE 1 : Essayer variations de casse pour formControlName
+    ${formControlName ? `
+    if (!inputFound) {
+      const variations = [
+        "${formControlName}",  // Original
+        "${this.toCamelCase(formControlName)}",  // camelCase
+        "${this.toPascalCase(formControlName)}",  // PascalCase
+        "${formControlName.toLowerCase()}",  // lowercase
+      ];
+      
+      for (const variation of variations) {
+        try {
+          await page.waitForSelector(\`[formControlName="\${variation}"]\`, { timeout: 1000, visible: true });
+          await page.focus(\`[formControlName="\${variation}"]\`);
+          await page.evaluate((selector) => {
+            document.querySelector(selector).value = '';
+          }, \`[formControlName="\${variation}"]\`);
+          await page.type(\`[formControlName="\${variation}"]\`, "${value}");
+          inputFound = true;
+          console.log(\`Filled input by formControlName variation: '\${variation}'\`);
+          break;
+        } catch (error) {
+          continue;
+        }
+      }
     }
+    ` : ''}
     
-    // Stratégie 2: Sélecteur par name attribute (input ET textarea)
+    // ✅ STRATÉGIE 2 : XPath case-insensitive (si Puppeteer supporte)
+    ${formControlName ? `
     if (!inputFound) {
       try {
-        await page.waitForSelector(\`input[name="${id}"], textarea[name="${id}"]\`, { timeout: 3000, visible: true });
-        await page.focus(\`input[name="${id}"], textarea[name="${id}"]\`);
-        await page.evaluate((name) => {
-          const element = document.querySelector(\`input[name="\${name}"], textarea[name="\${name}"]\`);
-          if (element) element.value = '';
-        }, "${id}");
-        await page.type(\`input[name="${id}"], textarea[name="${id}"]\`, "${value}");
-        inputFound = true;
-        console.log("Filled input/textarea '${id}' with value '${value}' by name attribute");
+        const [element] = await page.$x(\`//input[translate(@formControlName, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')=translate('${formControlName}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')]\`);
+        if (element) {
+          await element.focus();
+          await element.evaluate(el => el.value = '');
+          await element.type("${value}");
+          inputFound = true;
+          console.log("Filled input by case-insensitive XPath: '${formControlName}'");
+        }
       } catch (error) {
-        console.log("Strategy 2 failed for '${id}': name attribute not found");
+        console.log("XPath case-insensitive strategy failed");
+      }
+    }
+    ` : ''}
+    
+    // ✅ STRATÉGIE 3 : Essayer par ID généré
+    if (!inputFound) {
+      try {
+        await page.waitForSelector('#${id}', { timeout: 2000, visible: true });
+        await page.focus('#${id}');
+        await page.evaluate((selector) => {
+          document.querySelector(selector).value = '';
+        }, '#${id}');
+        await page.type('#${id}', "${value}");
+        inputFound = true;
+        console.log("Filled input by generated ID: '${id}'");
+      } catch (error) {
+        console.log("Generated ID strategy failed");
       }
     }
     
-    // Stratégie 3: Sélecteur par formControlName (input ET textarea)
     if (!inputFound) {
-      try {
-        await page.waitForSelector(\`input[formcontrolname="${id}"], textarea[formcontrolname="${id}"]\`, { timeout: 3000, visible: true });
-        await page.focus(\`input[formcontrolname="${id}"], textarea[formcontrolname="${id}"]\`);
-        await page.evaluate((name) => {
-          const element = document.querySelector(\`input[formcontrolname="\${name}"], textarea[formcontrolname="\${name}"]\`);
-          if (element) element.value = '';
-        }, "${id}");
-        await page.type(\`input[formcontrolname="${id}"], textarea[formcontrolname="${id}"]\`, "${value}");
-        inputFound = true;
-        console.log("Filled input/textarea '${id}' with value '${value}' by formControlName");
-      } catch (error) {
-        console.log("Strategy 3 failed for '${id}': formControlName not found");
-      }
-    }
-    
-    // Stratégie 4: Fallback - premier textarea trouvé (pour les cas difficiles)
-    if (!inputFound) {
-      try {
-        await page.waitForSelector('textarea', { timeout: 2000, visible: true });
-        await page.focus('textarea');
-        await page.evaluate(() => {
-          const textarea = document.querySelector('textarea');
-          if (textarea) textarea.value = '';
-        });
-        await page.type('textarea', "${value}");
-        inputFound = true;
-        console.log("Filled first textarea with value '${value}' (fallback strategy)");
-      } catch (error) {
-        console.log("Strategy 4 failed for '${id}': no textarea found");
-      }
-    }
-    
-    if (!inputFound) {
-      console.log("Warning: Could not find input/textarea with ID '${id}' using any strategy");
-      console.log("Tried strategies: exact ID, name attribute, formControlName, first textarea");
+      console.log("Warning: Could not find input with ID '${id}' or formControlName '${formControlName || 'unknown'}' using any strategy");
     }
   } catch (error) {
-    console.log("Error filling input/textarea '${id}': " + error.message);
+    console.log("Error filling input '${id}': " + error.message);
   }
 `;
-  }
+}
 
   private generateRadioGroupCode(id: string, value: any, waitTimeout: number): string {
     const stablePart = this.extractStableRadioGroupName(id);
@@ -724,62 +772,149 @@ runAllTests();
   }
 
   private generateButtonCode(id: string, value: any, waitTimeout: number): string {
-    const keywords = this.extractKeywordsFromId(id);
-    const keywordsStr = keywords.join(', ');
-    const shouldClick = this.shouldClickButton(value);
-
-    if (!shouldClick) {
-      return `
+  const shouldClick = this.shouldClickButton(value);
+  if (!shouldClick) {
+    return `
   // Button '${id}' is set to NOT be clicked (value: '${value}')
   console.log("Skipping button '${id}' - value indicates no click required");
 `;
-    }
+  }
 
-    return `
+  const buttonText = this.extractButtonText(id);
+  const formControlName = this.extractFormControlName(id);
+  
+  return `
   try {
     let button = null;
     let strategyUsed = "";
+    let buttonFound = false;
     
-    // 1. Cherche par ID exact
-    try {
-      console.log("Testing strategy 1: Searching by exact ID '#${id}'");
-      await page.waitForSelector('#${id}', { timeout: 3000, visible: true });
-      button = await page.$('#${id}');
-      if (button) {
-        strategyUsed = "exact ID";
-        console.log("✅ Strategy 1 SUCCESS: Found button by exact ID");
+    // ✅ STRATÉGIE 1 : Essayer par texte exact et variations (case-insensitive)
+    ${buttonText ? `
+    const textVariations = [
+      "${buttonText}",  // Texte extrait exact
+      "${buttonText.toLowerCase()}",  // lowercase
+      "${buttonText.toUpperCase()}",  // UPPERCASE
+      "${buttonText.replace(/[^a-zA-Z0-9\s]/g, '')}",  // Sans caractères spéciaux
+    ];
+    
+    for (const text of textVariations) {
+      if (!buttonFound && text.trim()) {
+        try {
+          // Essayer avec XPath case-insensitive
+          const [element] = await page.$x(\`//button[translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')=translate(normalize-space('\${text}'), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')]\`);
+          if (element) {
+            button = element;
+            buttonFound = true;
+            strategyUsed = \`case-insensitive text: '\${text}'\`;
+            console.log(\`✅ Strategy 1 SUCCESS: Found button by case-insensitive text: '\${text}'\`);
+            break;
+          }
+        } catch (error) {
+          continue;
+        }
       }
-    } catch (error) {
-      console.log("❌ Strategy 1 FAILED: Exact ID '#${id}' not found - " + error.message);
     }
-
-    // 2. Cherche par correspondance de mots-clés
-    if (!button && [${keywords.map(k => `"${k}"`).join(', ')}].length > 0) {
+    ` : ''}
+    
+    // ✅ STRATÉGIE 2 : Essayer spécifiquement par type submit avec texte
+    if (!buttonFound) {
       try {
-        console.log("Testing strategy 2: Searching by keywords [${keywordsStr}]");
+        console.log("Testing strategy 2: Submit button with keywords");
+        const submitKeywords = ["sign", "up", "submit", "register", "create", "send"];
+        
+        for (const keyword of submitKeywords) {
+          try {
+            const [element] = await page.$x(\`//button[@type='submit' and contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '\${keyword}')]\`);
+            if (element) {
+              button = element;
+              buttonFound = true;
+              strategyUsed = \`submit with keyword: '\${keyword}'\`;
+              console.log(\`✅ Strategy 2 SUCCESS: Found submit button containing keyword: '\${keyword}'\`);
+              break;
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+      } catch (error) {
+        console.log("❌ Strategy 2 FAILED: " + error.message);
+      }
+    }
+    
+    // ✅ STRATÉGIE 3 : Essayer par type submit simple (fallback)
+    if (!buttonFound) {
+      try {
+        console.log("Testing strategy 3: Simple submit button");
+        await page.waitForSelector('button[type="submit"]', { timeout: 2000, visible: true });
+        button = await page.$('button[type="submit"]');
+        if (button) {
+          buttonFound = true;
+          strategyUsed = "submit type (fallback)";
+          console.log("✅ Strategy 3 SUCCESS: Found button by submit type");
+        }
+      } catch (error) {
+        console.log("❌ Strategy 3 FAILED: " + error.message);
+      }
+    }
+    
+    // ✅ STRATÉGIE 4 : Essayer par ID généré complet
+    if (!buttonFound) {
+      try {
+        console.log("Testing strategy 4: Generated ID '#${id}'");
+        await page.waitForSelector('#${id}', { timeout: 1000, visible: true });
+        button = await page.$('#${id}');
+        if (button) {
+          buttonFound = true;
+          strategyUsed = "generated ID";
+          console.log("✅ Strategy 4 SUCCESS: Found button by generated ID");
+        }
+      } catch (error) {
+        console.log("❌ Strategy 4 FAILED: " + error.message);
+      }
+    }
+    
+    // ✅ STRATÉGIE 5 : Dernier recours - recherche approximative
+    if (!buttonFound) {
+      try {
+        console.log("Testing strategy 5: Approximate text matching (last resort)");
         const allButtons = await page.$$('button');
-        const keywords = [${keywords.map(k => `"${k}"`).join(', ')}];
-        console.log(\`Found \${allButtons.length} buttons on page, checking keywords...\`);
+        console.log(\`Found \${allButtons.length} buttons on page, checking text...\`);
         
         for (let i = 0; i < allButtons.length; i++) {
           const btn = allButtons[i];
           try {
-            const btnText = await btn.evaluate(el => el.textContent || el.getAttribute('textContent') || '');
-            const btnWords = btnText.toLowerCase().split(/\\s+/).filter(word => word.trim().length > 0);
-            console.log(\`Button \${i + 1}: "\${btnText.trim()}" → words: [\${btnWords.join(', ')}]\`);
+            const isEnabled = await btn.evaluate(el => !el.disabled);
+            const isVisible = await btn.evaluate(el => el.offsetParent !== null);
             
-            const hasAllKeywords = keywords.every(keyword => btnWords.includes(keyword.toLowerCase()));
-            if (hasAllKeywords) {
-              const isEnabled = await btn.evaluate(el => !el.disabled);
-              const isVisible = await btn.evaluate(el => el.offsetParent !== null);
-              console.log(\`Keywords match! Enabled: \${isEnabled}, Visible: \${isVisible}\`);
+            if (isEnabled && isVisible) {
+              const btnText = await btn.evaluate(el => el.textContent || el.getAttribute('textContent') || '');
+              console.log(\`Button \${i + 1}: "\${btnText.trim()}" (enabled: \${isEnabled}, visible: \${isVisible})\`);
               
-              if (isEnabled && isVisible) {
+              ${buttonText ? `
+              // Vérifier si le texte correspond approximativement
+              if (btnText.toLowerCase().includes("${buttonText.toLowerCase()}") || 
+                  btnText.toLowerCase().includes("submit") || 
+                  btnText.toLowerCase().includes("sign")) {
                 button = btn;
-                strategyUsed = "keywords matching";
-                console.log(\`✅ Strategy 2 SUCCESS: Found button by keywords: '\${btnText.trim()}'\`);
+                buttonFound = true;
+                strategyUsed = \`approximate text match: '\${btnText.trim()}'\`;
+                console.log(\`✅ Strategy 5 SUCCESS: Found button by approximate text: '\${btnText.trim()}'\`);
                 break;
               }
+              ` : `
+              // Recherche générique pour mots-clés communs
+              if (btnText.toLowerCase().includes("submit") || 
+                  btnText.toLowerCase().includes("sign") || 
+                  btnText.toLowerCase().includes("send") ||
+                  btnText.toLowerCase().includes("create")) {
+                button = btn;
+                buttonFound = true;
+                strategyUsed = \`generic text: '\${btnText.trim()}'\`;
+                console.log(\`✅ Strategy 5 SUCCESS: Found button by generic text: '\${btnText.trim()}'\`);
+                break;
+              }
+              `}
             }
           } catch (error) {
             console.log(\`Error checking button \${i + 1}: \${error.message}\`);
@@ -787,54 +922,17 @@ runAllTests();
           }
         }
         
-        if (!button) {
-          console.log("❌ Strategy 2 FAILED: No button found with matching keywords");
+        if (!buttonFound) {
+          console.log("❌ Strategy 5 FAILED: No suitable button found");
         }
       } catch (error) {
-        console.log("❌ Strategy 2 FAILED: Error during keywords search - " + error.message);
+        console.log("❌ Strategy 5 FAILED: " + error.message);
       }
     }
-
-    // 3. Cherche par partie stable de l'ID (fallback)
-    if (!button) {
-      try {
-        const stablePart = "${this.extractStableButtonText(id)}";
-        console.log(\`Testing strategy 3: Searching by stable ID pattern '*\${stablePart}*'\`);
-        if (stablePart) {
-          await page.waitForSelector(\`[id*="\${stablePart}"]\`, { timeout: 2000, visible: true });
-          button = await page.$(\`[id*="\${stablePart}"]\`);
-          if (button) {
-            strategyUsed = "stable ID pattern";
-            console.log("✅ Strategy 3 SUCCESS: Found button by stable ID part");
-          }
-        } else {
-          console.log("❌ Strategy 3 SKIPPED: No stable part extracted from ID");
-        }
-      } catch (error) {
-        console.log("❌ Strategy 3 FAILED: Stable ID pattern not found - " + error.message);
-      }
-    }
-
-    // 4. Cherche par type submit (dernier recours)
-    if (!button) {
-      try {
-        console.log("Testing strategy 4: Searching by submit type (last resort)");
-        await page.waitForSelector('button[type="submit"]', { timeout: 2000, visible: true });
-        button = await page.$('button[type="submit"]');
-        if (button) {
-          strategyUsed = "submit type";
-          console.log("✅ Strategy 4 SUCCESS: Found button by submit type");
-        }
-      } catch (error) {
-        console.log("❌ Strategy 4 FAILED: Submit button not found - " + error.message);
-      }
-    }
-
+    
     // Clic final avec vérification
-    if (button) {
+    if (button && buttonFound) {
       console.log(\`Attempting to click button using strategy: \${strategyUsed}\`);
-      await button.evaluate(el => el.scrollIntoView(true));
-      await delay(500);
       
       // Double vérification avant clic
       const isClickable = await button.evaluate(el => {
@@ -842,6 +940,8 @@ runAllTests();
       });
       
       if (isClickable) {
+        await button.evaluate(el => el.scrollIntoView(true));
+        await delay(500);
         await button.click();
         console.log("✅ CLICK SUCCESS: Clicked button '${id}' using " + strategyUsed);
       } else {
@@ -849,15 +949,15 @@ runAllTests();
       }
     } else {
       console.log("❌ ALL STRATEGIES FAILED: Could not find button '${id}'");
-      console.log("Expected keywords: ${keywordsStr}");
-      console.log("Tried strategies: exact ID, keywords matching, stable ID pattern, submit type");
+      console.log("Expected text: ${buttonText || 'unknown'}");
+      console.log("Tried strategies: case-insensitive text, submit with keywords, submit fallback, generated ID, approximate matching");
     }
 
   } catch (error) {
     console.log("❌ CRITICAL ERROR clicking button '${id}': " + error.message);
   }
 `;
-  }
+}
 
   /**
    * Détermine si un bouton doit être cliqué selon sa valeur

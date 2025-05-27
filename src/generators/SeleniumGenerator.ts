@@ -84,6 +84,37 @@ ${(scenario as any[]).map((_: any, i: number) => `        test_case_${i + 1}(dri
 
     return template;
   }
+  /**
+ * ✅ NOUVEAU : Extrait le formControlName depuis l'ID généré
+ * Ex: "input__name__uuid" → "name"
+ */
+private extractFormControlName(generatedId: string): string | null {
+  if (!generatedId || typeof generatedId !== 'string') return null;
+  
+  const parts = generatedId.split('__');
+  if (parts.length >= 3) {
+    // Pattern: "input__name__uuid" → "name"
+    // Pattern: "button__sign_up!__uuid" → "sign_up!"
+    return parts[1];
+  }
+  return null;
+}
+
+/**
+ * ✅ NOUVEAU : Extrait le texte du bouton depuis l'ID généré
+ * Ex: "button__sign_up!__uuid" → "Sign Up!"
+ */
+private extractButtonText(generatedId: string): string | null {
+  const formControlName = this.extractFormControlName(generatedId);
+  if (!formControlName) return null;
+  
+  // Convertir "sign_up!" → "Sign Up!"
+  return formControlName
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+    .replace(/!/g, '!'); // Garder les caractères spéciaux
+}
 
   /**
    * Génère le code d'une fonction de test pour un scénario donné
@@ -145,18 +176,113 @@ ${(scenario as any[]).map((_: any, i: number) => `        test_case_${i + 1}(dri
   }
 
   private generateInputCode(id: string, value: any, waitTimeout: number): string {
-    return `
+  const formControlName = this.extractFormControlName(id);
+  
+  return `
     try:
-        element = WebDriverWait(driver, ${waitTimeout}).until(
-            EC.presence_of_element_located((By.ID, "${id}"))
-        )
-        element.clear()
-        element.send_keys("${value}")
-        print("Filled input '${id}' with value '${value}'")
-    except TimeoutException:
-        print("Warning: Could not find input with ID '${id}'")
+        element = None
+        input_found = False
+        
+        # ✅ STRATÉGIE 1 : Essayer par formControlName case-insensitive
+        ${formControlName ? `
+        try:
+            # Cherche avec XPath case-insensitive pour formControlName
+            element = WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located((By.XPATH, "//input[translate(@formControlName, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')=translate('${formControlName}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')]"))
+            )
+            input_found = True
+            print("Found input by case-insensitive formControlName: '${formControlName}'")
+        except TimeoutException:
+            # Fallback CSS exact si XPath échoue
+            try:
+                element = WebDriverWait(driver, 2).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "[formControlName='${formControlName}']"))
+                )
+                input_found = True
+                print("Found input by exact formControlName: '${formControlName}'")
+            except TimeoutException:
+                pass
+        ` : ''}
+        
+        # ✅ STRATÉGIE 2 : Essayer les variations courantes de casse
+        ${formControlName ? `
+        if not input_found:
+            # Générer des variations de casse communes
+            variations = [
+                "${formControlName}",  # Original (minuscules)
+                "${this.toCamelCase(formControlName)}",  # camelCase
+                "${this.toPascalCase(formControlName)}",  # PascalCase
+                "${formControlName.toLowerCase()}",  # lowercase
+            ]
+            for variation in variations:
+                try:
+                    element = WebDriverWait(driver, 1).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, f"[formControlName='{variation}']"))
+                    )
+                    input_found = True
+                    print(f"Found input by formControlName variation: '{variation}'")
+                    break
+                except TimeoutException:
+                    continue
+        ` : ''}
+        
+        # ✅ STRATÉGIE 3 : Essayer par ID généré complet
+        if not input_found:
+            try:
+                element = WebDriverWait(driver, 2).until(
+                    EC.presence_of_element_located((By.ID, "${id}"))
+                )
+                input_found = True
+                print("Found input by generated ID: '${id}'")
+            except TimeoutException:
+                pass
+        
+        # ✅ STRATÉGIE 4 : Essayer par name attribute case-insensitive
+        ${formControlName ? `
+        if not input_found:
+            try:
+                element = WebDriverWait(driver, 1).until(
+                    EC.presence_of_element_located((By.XPATH, f"//input[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')=translate('${formControlName}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')]"))
+                )
+                input_found = True
+                print("Found input by case-insensitive name: '${formControlName}'")
+            except TimeoutException:
+                pass
+        ` : ''}
+        
+        if element and input_found:
+            element.clear()
+            element.send_keys("${value}")
+            print("Filled input '${id}' with value '${value}'")
+        else:
+            print("Warning: Could not find input with ID '${id}' or formControlName '${formControlName || 'unknown'}' using any strategy")
+            
+    except Exception as e:
+        print(f"Error filling input '${id}': {str(e)}")
 `;
-  }
+}
+
+/**
+ * ✅ NOUVEAU : Convertit en camelCase
+ */
+private toCamelCase(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toLowerCase() + 
+         str.slice(1)
+            .replace(/[_-]([a-z])/g, (_, char) => char.toUpperCase());
+}
+
+/**
+ * ✅ NOUVEAU : Convertit en PascalCase  
+ */
+private toPascalCase(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + 
+         str.slice(1)
+            .replace(/[_-]([a-z])/g, (_, char) => char.toUpperCase());
+}
+
+
 
   private generateRadioGroupCode(id: string, value: any, waitTimeout: number): string {
     // Extrait la partie stable (ex: "gender" depuis "mat-radio-group__gender__uuid")
@@ -655,88 +781,124 @@ ${(scenario as any[]).map((_: any, i: number) => `        test_case_${i + 1}(dri
   }
 
   private generateButtonCode(id: string, value: any, waitTimeout: number): string {
-    // Extrait les mots-clés de l'ID
-    const keywords = this.extractKeywordsFromId(id);
-    const keywordsStr = keywords.join(', ');
-    // Vérifie si le bouton doit être cliqué
-    const shouldClick = this.shouldClickButton(value);
-
-    if (!shouldClick) {
-      return `
+  const shouldClick = this.shouldClickButton(value);
+  if (!shouldClick) {
+    return `
     # Button '${id}' is set to NOT be clicked (value: '${value}')
     print("Skipping button '${id}' - value indicates no click required")
 `;
-    }
+  }
 
-    return `
+  const buttonText = this.extractButtonText(id);
+  const formControlName = this.extractFormControlName(id);
+  
+  return `
     try:
         button = None
-        # 1. Cherche par ID exact
-        try:
-            button = WebDriverWait(driver, 2).until(
-                EC.element_to_be_clickable((By.ID, "${id}"))
-            )
-            print("Found button by exact ID")
-        except TimeoutException:
-            pass
-
-        # 2. Cherche par correspondance de mots-clés
-        if not button and [${keywords.map(k => `"${k}"`).join(', ')}]:
+        button_found = False
+        
+        # ✅ STRATÉGIE 1 : Essayer par texte exact et variations (case-insensitive)
+        ${buttonText ? `
+        text_variations = [
+            "${buttonText}",  # Texte extrait exact
+            "${buttonText.toLowerCase()}",  # lowercase
+            "${buttonText.toUpperCase()}",  # UPPERCASE
+            "${buttonText.replace(/[^a-zA-Z0-9\s]/g, '')}",  # Sans caractères spéciaux
+        ]
+        
+        for text in text_variations:
+            if not button_found and text.strip():
+                try:
+                    # Essayer avec normalize-space pour ignorer les espaces multiples
+                    button = WebDriverWait(driver, 1).until(
+                        EC.element_to_be_clickable((By.XPATH, f"//button[normalize-space(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'))=normalize-space(translate('{text}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'))]"))
+                    )
+                    button_found = True
+                    print(f"Found button by case-insensitive text: '{text}'")
+                    break
+                except TimeoutException:
+                    continue
+        ` : ''}
+        
+        # ✅ STRATÉGIE 2 : Essayer spécifiquement par type submit avec texte
+        if not button_found:
             try:
-                # Récupère tous les boutons de la page
-                all_buttons = driver.find_elements(By.TAG_NAME, "button")
-                keywords = [${keywords.map(k => `"${k}"`).join(', ')}]
-                for btn in all_buttons:
+                # Cherche un bouton submit qui contient "sign" ou "up" ou "submit"
+                submit_keywords = ["sign", "up", "submit", "register", "create", "send"]
+                for keyword in submit_keywords:
                     try:
-                        # Récupère le texte du bouton (inclut les icônes et texte imbriqué)
-                        btn_text = btn.get_attribute('textContent') or btn.text or ""
-                        btn_words = [word.lower().strip() for word in btn_text.split() if word.strip()]
-                        # Vérifie si tous les mots-clés sont présents
-                        if all(keyword in btn_words for keyword in keywords):
-                            if btn.is_enabled() and btn.is_displayed():
-                                button = btn
-                                print(f"Found button by keywords matching: '{btn_text.strip()}'")
-                                break
-                    except Exception:
+                        button = WebDriverWait(driver, 1).until(
+                            EC.element_to_be_clickable((By.XPATH, f"//button[@type='submit' and contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{keyword}')]"))
+                        )
+                        button_found = True
+                        print(f"Found submit button containing keyword: '{keyword}'")
+                        break
+                    except TimeoutException:
                         continue
             except Exception:
                 pass
-
-        # 3. Cherche par partie stable de l'ID (fallback)
-        if not button:
-            try:
-                stable_part = "${this.extractStableButtonText(id)}"
-                if stable_part:
-                    button = WebDriverWait(driver, 2).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, f"[id*='{stable_part}']"))
-                    )
-                    print("Found button by stable ID part")
-            except TimeoutException:
-                pass
-
-        # 4. Cherche par type submit
-        if not button:
+        
+        # ✅ STRATÉGIE 3 : Essayer par type submit simple (fallback)
+        if not button_found:
             try:
                 button = WebDriverWait(driver, 2).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))
                 )
-                print("Found button by submit type")
+                button_found = True
+                print("Found button by submit type (fallback)")
             except TimeoutException:
                 pass
-
-        if button:
+        
+        # ✅ STRATÉGIE 4 : Essayer par ID généré complet
+        if not button_found:
+            try:
+                button = WebDriverWait(driver, 1).until(
+                    EC.element_to_be_clickable((By.ID, "${id}"))
+                )
+                button_found = True
+                print("Found button by generated ID: '${id}'")
+            except TimeoutException:
+                pass
+        
+        # ✅ STRATÉGIE 5 : Dernier recours - premier bouton visible et activé
+        if not button_found:
+            try:
+                buttons = driver.find_elements(By.TAG_NAME, "button")
+                for btn in buttons:
+                    if btn.is_enabled() and btn.is_displayed():
+                        # Vérifier si le texte correspond approximativement
+                        btn_text = btn.text or btn.get_attribute('textContent') or ''
+                        ${buttonText ? `
+                        if "${buttonText.toLowerCase()}" in btn_text.lower() or "submit" in btn_text.lower() or "sign" in btn_text.lower():
+                            button = btn
+                            button_found = True
+                            print(f"Found button by approximate text match: '{btn_text}'")
+                            break
+                        ` : `
+                        if "submit" in btn_text.lower() or "sign" in btn_text.lower() or "send" in btn_text.lower():
+                            button = btn
+                            button_found = True
+                            print(f"Found button by generic text: '{btn_text}'")
+                            break
+                        `}
+            except Exception:
+                pass
+        
+        if button and button_found:
             driver.execute_script("arguments[0].scrollIntoView(true);", button)
             time.sleep(0.5)
             button.click()
             print("Clicked button '${id}' successfully")
         else:
-            print("Warning: Could not find button with ID '${id}' using any strategy")
-            print("Expected keywords: ${keywordsStr}")
-
+            print("Warning: Could not find button with ID '${id}' or text '${buttonText || 'unknown'}' using any strategy")
+            print("Tried: case-insensitive text matching, submit with keywords, submit fallback, generated ID, approximate matching")
+            
     except Exception as e:
         print(f"Error clicking button '${id}': {str(e)}")
 `;
-  }
+}
+
+
 
   /**
    * Détermine si un bouton doit être cliqué selon sa valeur

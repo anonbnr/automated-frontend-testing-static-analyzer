@@ -1,144 +1,209 @@
-# Static Analyzer for Automated Frontent Testing Framework
-## Overview
-The Static Analyzer is a core component of the **Frontend Automation Framework**, designed to perform **static code analysis** on Angular applications. It generates a **Navigation Graph** that maps the application's structure, including its routes, components, interactive widgets, and their validation rules. This graph serves as the foundation for automated test scenario generation, enabling precise and efficient frontend testing.
+# Automated Frontend Testing Static Analyzer
+A core component of our **Frontend Automation Framework**, the Static Analyzer performs deep **static analysis** of Angular applications to produce a comprehensive **Navigation Graph**. That graph captures:
 
-## Features
-1. **Route Analysis**: Extracts Angular routing configurations, including paths, components, and redirects.
-2. **Template Analysis**: Identifies interactive widgets (e.g., buttons, forms) and their event bindings, attributes, and validation rules from Angular templates.
-3. **Logic Analysis**: Analyzes TypeScript files to extract navigation logic, such as calls to router.navigate and service interactions, and validation rules.
-4. **Navigation Graph Builder**: Constructs a graph representation of the application's structure, including:
-   - **Nodes**: Routes, components, widgets, and virtual routes.
-   - **Transitions**: Navigation events, router links, redirects, backend calls, and form submissions
-5. **Event Handling Models**:
-   - **EventContext**: Captures details of events, including their handlers and associated calls.
-   - **WidgetEventMap**: Maps widgets to events and transitions, providing deeper insights into event-driven navigation.
-   - **Validation Rules**: Extracts and maps form control validation rules (e.g., `Validators.required`) to widgets.
-6. **Modular Design**: Highly modular and extensible structure for scalability and ease of maintenance.
+- **Routes** and **redirects**  
+- **Components** and their hierarchical nesting  
+- **Interactive widgets** (buttons, forms, links, etc.)  
+- **Event bindings**, **router navigations**, **service calls**  
+- **Form validation rules** and **submission triggers**  
 
-## Project Structure
+This powers automated test-scenario generation and frontend regression testing.
+
+---
+
+## ⚙️ Features
+1. **Component Discovery**  
+   - Scans your entire codebase for `@Component` classes  
+   - Loads inline templates or external `templateUrl` files  
+   - Extracts component selectors, class names, nested child selectors  
+2. **Template Analysis**  
+   - Parses Angular templates into an AST  
+   - Identifies every interactive widget (forms, buttons, inputs, anchors, Material controls, etc.)  
+   - Generates stable, meaningful widget IDs  
+   - Captures widget attributes, validation rules, submission triggers  
+3. **Route Analysis**  
+   - Gathers all Angular routes (`Routes` arrays, `RouterModule.forRoot` / `forChild`)  
+   - Handles eager and lazy loading (`component`, `loadChildren`, `loadComponent`)  
+   - Dedupe, normalize paths (leading `/`) and classify component roles:  
+     - **root** (`<app-root>`)  
+     - **global** (appears on *every* route)  
+     - **shared** (on multiple routes)  
+     - **mapped** (tied to exactly one route)  
+     - **dead** (never used)  
+4. **Logic Analysis**  
+   - Inspects each component’s TypeScript AST via `ts-morph`  
+   - Wires every widget event (`click`, `submit`, custom, `[routerLink]`, `href`) to its handler  
+   - Extracts ordered call graphs: `router.navigate`, service calls, backend interactions  
+   - Resolves dynamic route parameters against your `RouteMap`  
+   - Pulls form control validators (`Validators.required`, `Validators.minLength`, etc.)  
+5. **Navigation Graph Builder**  
+   - Builds a **multigraph** of:  
+     - **Nodes**: routes, components, widgets, virtual-routes  
+     - **Static “contains” edges**: route→component→nestedComponent/widget  
+     - **Dynamic transitions**: widget events → route or virtual target  
+   - Exposes the resulting `AppNavigation` for downstream tools  
+6. **Express API**  
+   - **`POST /components`** → returns all `ComponentInfo`  
+   - **`POST /routes`** → returns deduped `RouteMap` + component roles  
+   - **`POST /graph`** → returns full `AppNavigation` multigraph  
+
+---
+
+## 📁 Project Structure
 ```plaintext
 automated-frontend-testing-static-analyzer/
 ├── src/
-│   ├── analyzers/                 
-│   │   ├── logic-analyzer.ts        # Analyzes navigation logic in TypeScript files
-│   │   ├── route-analyzer.ts        # Analyzes routing configurations
-│   │   ├── template-analyzer.ts     # Analyzes Angular templates for widgets and bindings
-│   ├── api/                         
-│   │   ├── api.ts                   # Express API for analysis
-│   ├── builders/                    
-│   │   ├── navigation-graph-builder.ts # Builds the navigation graph
-│   ├── models/                      
-│   │   ├── component-info.ts        # Component-level models
-│   │   ├── navigation-graph.ts      # Models for graph nodes and transitions
-│   │   ├── route-info.ts            # Models for route mappings and redirects
-│   │   ├── widget-info.ts           # Models for widget details, events, and validation rules
-│   ├── orchestrators/               
-│   │   ├── static-analyzer.ts       # Combines analyzers for end-to-end analysis
-│   ├── parsers/                     
-│   │   ├── angular-template-parser.ts # Parses Angular templates into AST
-│   ├── utils/                       
-│   │   ├── route-info-utils.ts      # Helpers for route-related processing
-│   │   ├── widget-id-generator.ts   # Generates unique IDs for widgets
-│   │   ├── widget-processor.ts      # Processes AST nodes into widget models
-│   ├── index.ts                     # Entry point for local testing
-├── package.json                     
-├── tsconfig.json                    
+│   ├── api/
+│   │   └── api.ts                        # Express endpoints: /components, /routes, /graph
+│   ├── analyzers/
+│   │   ├── business-logic/
+│   │   │   ├── logic-analyzer.ts
+│   │   │   └── logic-utils.ts
+│   │   ├── routes/
+│   │   │   ├── route-analyzer.ts
+│   │   │   └── route-utils.ts
+│   │   └── template/
+│   │       ├── template-analyzer.ts
+│   │       ├── template-utils.ts
+│   │       └── widgets/
+│   │           ├── widget-id-generator.ts
+│   │           └── widget-processor.ts
+│   ├── builders/
+│   │   ├── component-registry-builder.ts
+│   │   └── navigation-graph-builder.ts
+│   ├── models/
+│   │   ├── component-info.ts
+│   │   ├── event-info.ts
+│   │   ├── navigation-graph.ts
+│   │   ├── route-info.ts
+│   │   └── widget-info.ts
+│   ├── orchestrators/
+│   │   └── static-analyzer.ts
+│   ├── parsers/
+│   │   └── template-parser.ts
+│   └── index.ts                         # (optional CLI entry, if you choose to add it)
+├── .gitignore
+├── LICENSE
+├── package.json                         
+├── package-lock.json                    
+└── tsconfig.json
 ```
 
-## Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/anonbnr/static-analyzer.git
-   cd static-analyzer
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Build the project:
-   ```bash
-   npm run build
-   ```
+---
 
-## Usage
-### Local Testing
-You can test the static analyzer locally using the `index.ts` file:
+## 🚀 Installation & Build
+```bash
+# 1. Clone
+git clone https://github.com/anonbnr/automated-frontend-testing-static-analyzer
+cd automated-frontend-testing-static-analyzer
 
-1. Update the `tsConfigPath` and `outputFilePath` in `index.ts` to match your Angular project.
-2. Run the script:
-   ```bash
-   npm run build && node dist/index.js
-   ```
+# 2. Install
+npm install
 
-### API Endpoint
-The static analyzer exposes an API for analyzing Angular applications.
+# 3. Build
+npm run build
+```
 
-1. Start the server:
-   ```bash
-   npm start
-   ```
-2. Send a POST request to the API using an API testing tool (e.g., [cURL](https://curl.se/), [Postman](https://www.postman.com/)):
-   ```bash
-   POST http://localhost:3000/analyze
-   Content-Type: application/json
+---
 
-   {
-     "projectRoot": "/path/to/angular/project"
-   }
-   ```
+## 🖥️ Running the API Server
+Starts on port **3000** by default (configurable via `PORT` env).
 
-3. The response will include the generated Navigation Graph:
-   ```json
-   {
-     "success": true,
-     "navigationGraph": {
-       "nodes": [...],
-       "transitions": [...]
-     }
-   }
-   ```
+```bash
+npm start
+```
 
-## Key Updates (Recent Enhancements)
-### Enhanced Widget Processing
-- Extracts detailed widget attributes, events, and validation rules (e.g., `Validators.required`, `Validators.pattern`).
-- Maps form control validation rules to corresponding widgets in the Navigation Graph.
+## 🔌 API Usage
+All endpoints expect a JSON body:
 
-### Navigation Graph Improvements
-- Includes validation rules and widget attributes for better test scenario definition.
-- Refined transition building for backend calls, form submissions, and router links.
+```json
+{ "projectRoot": "/absolute/path/to/your/angular/project" }
+```
 
-### Modular Enhancements
-- Updated data models (`widget-info.ts`, `navigation-graph.ts`) to include validation rules and form submission triggers.
-- Refactored `LogicAnalyzer` and `WidgetProcessor` for improved validation and event handling logic.
+### 1. Discover Components
+```http
+POST http://localhost:3000/components
+Content-Type: application/json
 
-## Core Components
-### Analyzers
-- **RouteAnalyzer**: Extracts route configurations, including paths, components, and redirects.
-- **TemplateAnalyzer**: Parses Angular templates to identify widgets and their event bindings.
-- **LogicAnalyzer**: Analyzes TypeScript files to extract navigation-related logic, including backend interactions.
+{ "projectRoot": "/path/to/angular/app" }
+```
 
-### Graph Builder
-- **NavigationGraphBuilder**: Constructs a directed graph representing the application's structure.
+**Response**
 
-### Utilities
-- **WidgetIDGenerator**: Generates unique IDs for widgets based on attributes and context.
-- **WidgetProcessor**: Processes template AST nodes into widget representations.
+```json
+{
+  "success": true,
+  "components": [ /* ComponentInfo[] */ ]
+}
+```
 
-### Orchestrator
-- **StaticAnalyzer**: Combines analyzers and the graph builder to perform end-to-end static analysis.
+### 2. Analyze Routes
+```http
+POST http://localhost:3000/routes
+Content-Type: application/json
 
-## API Documentation
-### **Endpoint**
-- **URL**: `/analyze`
-- **Method**: `POST`
-- **Request Body**:
-    - `projectRoot` (string): Absolute path to the root of the Angular project.
-- **Response**:
-    - `success` (boolean): Indicates whether the analysis was successful.
-    - `navigationGraph` (object): Contains the nodes and transitions of the Navigation Graph.
+{ "projectRoot": "/path/to/angular/app" }
+```
 
-## Future Enhancements
-1. **Test Scenario Automation** (*High Priority*): Automatically generate test scenarios based on the Navigation Graph.
-2. **Error Reporting**: Provide detailed error messages and recovery options.
-3. **Dynamic Analysis Integration**: Combine static and dynamic analysis for comprehensive navigation graphs and automated frontend testing.
-4. **Framework Support** (*Long-Term Goal*): Expand support to React, Vue, and other frontend frameworks.
+**Response**
+
+```json
+{
+  "success": true,
+  "routeMap": {
+    "routes": [ /* ComponentRoute[] */ ],
+    "redirections": [ /* RedirectRoute[] */ ],
+    "roles": {
+      "root": ["app-root"],
+      "global": [/* selectors */],
+      "shared": [/* selectors */],
+      "mapped": [/* selectors */],
+      "dead":   [/* selectors */]
+    }
+  }
+}
+```
+
+### 3. Build Navigation Graph
+```http
+POST http://localhost:3000/graph
+Content-Type: application/json
+
+{ "projectRoot": "/path/to/angular/app" }
+```
+
+**Response**
+
+```json
+{
+  "success": true,
+  "graph": {
+    "nodes":   [ /* GraphNode[] */ ],
+    "edges":   [ /* GraphEdge[] */ ],
+    "transitions": [ /* GraphTransition[] */ ]
+  }
+}
+```
+
+---
+
+## ⚒️ Configuration
+You can override defaults via environment variables:
+
+```dotenv
+# .env
+PORT=3000
+```
+
+---
+
+## 🔮 Roadmap
+1. **Scenario Extraction** — integrate `ScenarioExtractor` (seasonal).
+2. **Automated Test Generation** — from the Navigation Graph.
+3. **Error Resilience** — richer diagnostics & partial-fail recovery.
+4. **Multi-framework Support** — React, Vue, etc.
+
+---
+
+## 📄 License
+[MIT](LICENSE)

@@ -1,160 +1,98 @@
-import * as path from "path";
-import * as ts from 'ts-morph';
-import { LogicAnalyzer } from '../analyzers/logic-analyzer.js';
+// ──────────────────────────────────────────────────────────────────────────────
+// static-analyzer.ts
+//
+// Coordinates the end-to-end static analysis of an Angular workspace to produce
+// an `AppNavigation` multigraph. It:
+//   1. Discovers every component + its template → ComponentRegistry
+//   2. Analyzes all routes & redirects            → RouteMap
+//   3. Builds static “contains” edges (and tags each component with its role): route → component → nested component/widget
+//   4. Runs business-logic analysis to extract widget-event call-graphs
+//   5. Builds dynamic transitions: widget events → routes / virtual targets
+//
+// Delegates work to:
+//   - `ComponentRegistryBuilder`
+//   - `RouteAnalyzer`
+//   - `LogicAnalyzer`
+//   - `NavigationGraphBuilder`
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { Project } from "ts-morph";
+import { LogicAnalyzer } from '../analyzers/business-logic/logic-analyzer.js';
 import { RouteAnalyzer } from "../analyzers/routes/route-analyzer.js";
-import { RouteMapUtils } from "../analyzers/routes/route-info-utils.js";
-import { TemplateAnalyzer } from "../analyzers/template/template-analyzer.js";
+import { ComponentRegistryBuilder } from "../builders/component-registry-builder.js";
 import { NavigationGraphBuilder } from '../builders/navigation-graph-builder.js';
-import { ComponentMap } from "../models/component-info.js";
-import { NavigationGraph } from '../models/navigation-graph.js';
-import { RouteMap } from "../models/route-info.js";
+import { ComponentRegistry } from "../models/component-info.js";
+import { AppNavigation } from "../models/navigation-graph.js";
+import { ComponentRouteMap } from "../models/route-info.js";
 
 /**
- * The `StaticAnalyzer` is responsible for analyzing an Angular application to generate a
- * navigation graph that includes component structure, routing information, and widget interactions.
+ * The `StaticAnalyzer` orchestrates construction of the full navigation graph
+ * for an Angular application. It drives the pipeline:
+ *  1) Component discovery via `ComponentRegistryBuilder`
+ *  2) Route analysis via `RouteAnalyzer`
+ *  3) Static graph assembly via `NavigationGraphBuilder.buildStatic*`
+ *  4) Dynamic transition extraction via `LogicAnalyzer`
+ *  5) Dynamic graph assembly via `NavigationGraphBuilder.buildDynamic`
+ *
+ * Usage:
+ * ```ts
+ * const analyzer = new StaticAnalyzer("/path/to/tsconfig.json");
+ * const navigation: AppNavigation = await analyzer.analyze();
+ * ```
  */
 export class StaticAnalyzer {
-    private project: ts.Project;
-    private projectPath: string;
+    private project: Project;
+    private registry!: ComponentRegistry;
+    private compRouteMap!: ComponentRouteMap;
     private routeAnalyzer: RouteAnalyzer;
-    private templateAnalyzer?: TemplateAnalyzer;
-    private logicAnalyzer: LogicAnalyzer;
-    private graphBuilder: NavigationGraphBuilder;
-    private componentMap: ComponentMap = { components: [] };
+    private logicAnalyzer: LogicAnalyzer = new LogicAnalyzer();
+    private graphBuilder: NavigationGraphBuilder = new NavigationGraphBuilder();
 
     /**
-     * Initializes the `StaticAnalyzer` with the specified TypeScript configuration file.
-     * @param tsConfigPath Path to the `tsconfig.json` file of the Angular project.
+     * Initializes the static analyzer with the specified TypeScript configuration file.
+     * @param tsConfigPath Absolute path to the Angular project's `tsconfig.json`
      */
     constructor(tsConfigPath: string) {
-        // Initialize the TypeScript project
-        this.project = new ts.Project({
-            tsConfigFilePath: tsConfigPath,
-        });
-        this.projectPath = tsConfigPath.substring(0, tsConfigPath.lastIndexOf(path.sep));
-        this.graphBuilder = new NavigationGraphBuilder();
-        this.routeAnalyzer = new RouteAnalyzer();
-        this.logicAnalyzer = new LogicAnalyzer();
+        this.project = new Project({ tsConfigFilePath: tsConfigPath });
+        this.routeAnalyzer = new RouteAnalyzer(this.project);
     }
 
     /**
-     * Analyzes the Angular project to generate a navigation graph.
-     * @returns A promise resolving to the generated `NavigationGraph`.
+     * Runs the full static-analysis pipeline and returns the assembled navigation graph.
+     *
+     * Steps:
+     *   1) Component discovery via ComponentRegistryBuilder
+     *   2) Route analysis via RouteAnalyzer (dedupe + reachability-based roles)
+     *   3) Static graph assembly (buildStatic): 
+     *      - registers routes, components (with root/global/shared/mapped/dead roles), nested components & widgets
+     *      - wires up “contains” edges
+     *   4) Business-logic analysis via LogicAnalyzer (widget → call graph)
+     *   5) Dynamic graph assembly (buildDynamic): 
+     *      - static-redirect edges
+     *      - event-driven transitions (routerLink, click, submit, virtual routes)
+     *
+     * @returns A promise resolving to an AppNavigation containing:
+     *   - nodes: all route, component, widget, and virtual-route nodes
+     *   - edges: all static “contains” relationships
+     *   - transitions: all dynamic event-driven transitions
      */
-    async analyze(): Promise<NavigationGraph> {
-        // Step 1: Build route nodes and transitions and extract route map
-        const routeMap = await this.extractRouteMap();
-        this.graphBuilder.buildRoutes(routeMap);
+    async analyze(): Promise<AppNavigation> {
+        // ── PHASE 1: COMPONENT DISCOVERY ─────────────────────────────────────────────
+        // Extracts every @Component, loads its template, parses widgets & nested selectors.
+        this.registry = await new ComponentRegistryBuilder(this.project).buildComponentsRegistry();
 
-        // Step 2: Extract Widgets and Event Handlers
-        for (const file of this.project.getSourceFiles()) {
-            for (const cls of file.getClasses()) {
-                const decorator = cls.getDecorator('Component');
-                if (decorator) {
-                    this.templateAnalyzer = new TemplateAnalyzer(decorator);
-                    const template = this.templateAnalyzer.extractTemplate();
+        // ── PHASE 2: ROUTE ANALYSIS ─────────────────────────────────────────────────
+        // Scans all routing modules, dedupes, and computes shared/global component sets.
+        this.compRouteMap = await this.routeAnalyzer.analyzeProject(this.registry);
 
-                    if (template) {
-                        const componentInfo = await this.templateAnalyzer.analyze(template);
-                        const route = this.getComponentRoute(cls, routeMap);
+        // ── PHASE 3: STATIC GRAPH CONSTRUCTION ──────────────────────────────────────
+        this.graphBuilder.buildStatic(this.compRouteMap, this.registry);
 
-                        // Add component to component map
-                        this.componentMap.components.push(componentInfo);
+        // ── PHASE 4: DYNAMIC GRAPH CONSTRUCTION ─────────────────────────────────────
+        const widgetEventMaps = this.logicAnalyzer.analyzeProject(this.project, this.registry, this.compRouteMap.routeMap);
+        this.graphBuilder.buildDynamic(this.compRouteMap.routeMap, this.registry.components, widgetEventMaps);
 
-                        // If no route, mark as shared
-                        if (!route) {
-                            // console.log(`Shared component: ${componentInfo.selector}`);
-                            routeMap.sharedComponents = routeMap.sharedComponents || new Set([]);
-                            routeMap.sharedComponents.add(componentInfo);
-                        }
-
-                        // Extract and analyze widget interactions
-                        const widgetEventMaps = this.logicAnalyzer.analyze(file, componentInfo.widgets, routeMap);
-
-                        // Build navigation graph for this component
-                        this.graphBuilder.buildComponentGraph(componentInfo, widgetEventMaps, route);
-                    }
-                }
-            }
-        }
-        // console.log('Component Map:', this.componentMap);
-        // console.log('Route Map:', routeMap);
-
-        // Build the contains transitions for orphan widgets in shared components
-        this.resolveOrphanWidgets(routeMap);
-
-        // Return the built graph
+        // ── PHASE 5: GRAPH CONSTRUCTED ─────────────────────────────────────
         return this.graphBuilder.getGraph();
-    }
-
-    /**
-     * Extracts the routing information from the Angular project.
-     * @returns A promise resolving to a `RouteMap` containing component routes and redirections.
-     */
-    private async extractRouteMap(): Promise<RouteMap> {
-        // Step 1: Extract component and redirection routes
-        const appModulePath = path.join(this.projectPath, 'src', 'app', 'app.module.ts');
-        const routeFile = this.project.getSourceFileOrThrow(appModulePath);
-        return await this.routeAnalyzer.analyze(routeFile);
-    }
-
-    /**
-     * Finds the route associated with a given component class.
-     * @param cls The TypeScript class declaration of a component.
-     * @param routeMap The `RouteMap` containing component routes.
-     * @returns The component's route as a string, or `undefined` if no route is found.
-     */
-    private getComponentRoute(cls: ts.ClassDeclaration, routeMap: RouteMap) {
-        let componentRoute = routeMap.components
-            .find((componentRoute) => componentRoute.component === cls.getName());
-
-        if (!componentRoute) {
-            console.log(`Component ${cls.getName()} has no associated route.`);
-            return undefined;
-        }
-
-        const route = `/${componentRoute.route}`;
-        console.log(`Component ${cls.getName()} matched with route ${route}`);
-        return route;
-    }
-
-    /**
-     * Resolves orphan widgets in shared components by linking them to appropriate parent routes or components.
-     * @param routeMap The `RouteMap` containing component and shared component information.
-     */
-    private resolveOrphanWidgets(routeMap: RouteMap): void {
-        if (routeMap.sharedComponents) {
-            for (const component of routeMap.sharedComponents) {
-                // Skip shared components without widgets
-                if (component.widgets.length === 0) {
-                    console.log(`Skipping shared component ${component.selector} as it has no widgets.`);
-                    continue;
-                }
-
-                const parents = RouteMapUtils.findParentComponents(component.selector, this.componentMap.components);
-
-                if (this.isGlobalComponent(parents, routeMap)) {
-                    // Handle global components
-                    this.graphBuilder.buildGlobalTransitions(component);
-                } else {
-                    // Handle shared components
-                    this.graphBuilder.buildSharedTransitions(component, routeMap, this.componentMap.components);
-                }
-            }
-        }
-    }
-
-    /**
-     * Determines whether a component is a global component.
-     * A component is considered global if:
-     * - It is the root component (`app-root`).
-     * - It has multiple parent components, all of which have defined routes.
-     * @param parents A list of parent component selectors.
-     * @param routeMap The `RouteMap` used to verify the existence of routes.
-     * @returns `true` if the component is a global component, `false` otherwise.
-     */
-    private isGlobalComponent(parents: string[], routeMap: RouteMap): boolean {
-        return parents.includes('app-root')
-            || (parents.length > 1 && parents.every(parent => RouteMapUtils.getRouteFromSelector(parent, routeMap)));
     }
 }

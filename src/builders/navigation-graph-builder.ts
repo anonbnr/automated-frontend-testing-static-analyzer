@@ -1,257 +1,310 @@
-import { RouteMapUtils } from "../analyzers/routes/route-info-utils.js";
-import { ComponentInfo } from "../models/component-info.js";
-import { NavigationGraph, Node } from "../models/navigation-graph.js";
-import { RouteMap } from "../models/route-info.js";
-import { WidgetEventMap, WidgetInfo } from "../models/widget-info.js";
+// ──────────────────────────────────────────────────────────────────────────────
+// navigation-graph-builder.ts
+//
+// Builds an application’s **navigation multigraph** in three steps:
+//
+//   1) **Static “contains”** relationships (route → component → nested component/widget).
+//   2) **Static redirects** (route → route via 'static-redirect').
+//   3) **Dynamic event-driven** transitions (click, submit, routerLink, navigate, etc.).
+//
+// Along the way we tag every component node with its **role** (root/global/shared/mapped/dead).
+//
+// Internally maintains a single shared node set (`nodes`) and two edge lists:
+//   - `edges`       — static GraphEdge[] (“contains” relations)  
+//   - `transitions` — dynamic GraphTransition[] (user/navigation events)  
+//
+// Finally emits an `AppNavigation` structure for downstream use.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { RoutingUtils } from "../analyzers/routes/route-utils.js";
+import { ComponentInfo, ComponentRegistry } from "../models/component-info.js";
+import { WidgetEventMap } from "../models/event-info.js";
+import { AppNavigation, DynamicGraphRelationType, GraphEdge, GraphNode, GraphNodeType, GraphTransition, StaticGraphRelationType } from "../models/navigation-graph.js";
+import { ComponentRouteMap, ComponentRouteRole, RouteMap } from "../models/route-info.js";
+import { WidgetInfo } from "../models/widget-info.js";
 
 /**
- * Constructs and manages the application's **navigation graph**.
- * This graph maps **routes, widgets, and interactions** between components.
+ * @TODO update documentation similarly to previous modules
+ * Orchestrates construction of the full navigation multigraph.
+ *
+ * Maintains:
+ *   - `nodes`       – all GraphNode entries (routes, components, widgets, virtual targets)
+ *   - `edges`       – all static “contains” GraphEdge entries
+ *   - `transitions` – all dynamic GraphTransition entries
+ *
+ * Call in three phases:
+ *   1) `buildStaticRoutes(routeMap)`
+ *   2) `buildStaticComponent(routeMap, component)` for each ComponentInfo
+ *   3) `buildDynamic(routeMap, components, widgetEventMaps)`
+ *
+ * Finally retrieve via `.getGraph()`.
  */
 export class NavigationGraphBuilder {
     /**
-     * The navigation graph being built
+     * Shared map of nodeId → GraphNode
      */
-    private graph: NavigationGraph = { nodes: [], transitions: [] };
+    private nodes: Map<string, GraphNode> = new Map();
 
     /**
-     * Retrieves the current **navigation graph**.
-     * @returns The constructed navigation graph.
+     * Static “contains” edges (type === "contains")
      */
-    getGraph(): NavigationGraph {
-        return this.graph;
+    private edges: GraphEdge[] = [];
+
+    /**
+     * Dynamic event‐driven transitions
+     */
+    private transitions: GraphTransition[] = [];
+
+    /**
+     * Returns the fully assembled navigation multigraph.
+     *
+     * @returns An `AppNavigation` containing:
+     *   - `nodes`: all routes, components, widgets, and virtual targets
+     *   - `edges`: all static “contains” relationships
+     *   - `transitions`: all dynamic event-driven flows
+     */
+    getGraph(): AppNavigation {
+        return {
+            nodes: Array.from(this.nodes.values()),
+            edges: this.edges,
+            transitions: this.transitions,
+        };
     }
 
-    /**
-     * Builds the **route nodes and transitions** from the provided `RouteMap`.
-     * @param routeMap The map of application routes.
-     */
-    buildRoutes(routeMap: RouteMap): void {
-        for (const { route } of routeMap.components) {
-            this.addRoute(`/${route}`);
-            console.log(`Route node added: /${route}`); // Debug log
-        }
-
-        for (const { route, redirectTo } of routeMap.redirections) {
-            const source = this.getRoute(`/${route}`);
-            const target = this.getRoute(`/${redirectTo}`);
-
-            if (!source) // add the source route node if it's not already added
-                this.graph.nodes.push({ id: `/${route}`, type: "route" });
-
-            if (!target) // add the target route node if it's not already added
-                this.graph.nodes.push({ id: `/${redirectTo}`, type: "route" });
-
-            this.addRouteRedirect(`/${route}`, `/${redirectTo}`);
-            console.log(`redirection transition added: /${route} -> /${redirectTo}`); // Debug log
-        }
-    }
+    // ────────────────────────────────────────────────────────────────────────────
+    // NODE REGISTRATION
+    // ────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Adds a **route node** to the graph.
-     * @param route The route path (e.g., `/dashboard`).
-     */
-    private addRoute(route: string): void {
-        this.graph.nodes.push({ id: route, type: 'route' });
-    }
-
-    /**
-     * Adds a **global component node** to the graph.
-     * @param globalId The ID of the global component.
-     */
-
-    private addGlobal(globalId: string): void {
-        this.graph.nodes.push({ id: globalId, type: 'global' });
-    }
-
-    /**
-     * Adds a **shared component node** to the graph.
-     * @param sharedId The ID of the shared component.
-     */
-    private addShared(sharedId: string): void {
-        this.graph.nodes.push({ id: sharedId, type: 'shared' });
-    }
-
-    /**
-     * Creates a **redirect transition** between two routes.
-     * @param from The source route.
-     * @param to The target route.
-     */
-    private addRouteRedirect(from: string, to: string): void {
-        this.graph.transitions.push({
-            from,
-            to,
-            "event": "redirect"
-        });
-    }
-
-    /**
-     * Builds the **navigation graph** for a component, linking its widgets and interactions.
-     * @param component The component to process.
-     * @param widgetEventMaps The event mappings for widgets.
-     * @param route The route associated with the component.
-     */
-    buildComponentGraph(
-        component: ComponentInfo,
-        widgetEventMaps: WidgetEventMap[],
-        route: string | undefined
-    ): void {
-        this.buildWidgets(component.widgets);
-        this.buildContainsTransitions(route, component.widgets);
-        this.buildRouterLinkTransitions(component.widgets);
-        this.buildNavigationTransitions(widgetEventMaps);
-    }
-
-    /**
-     * Adds **widget nodes** to the graph.
-     * @param widgets The list of widgets in the component.
-     */
-    private buildWidgets(widgets: WidgetInfo[]): void {
-        for (const widget of widgets) {
-            this.graph.nodes.push({
-                id: widget.id,
-                type: widget.type,
-                attributes: widget.attributes,
-                validationRules: widget.validationRules,
-                triggersFormSubmission: widget.triggersFormSubmission
-            });
-            console.log(`Widget node added: ID: ${widget.id}, Type: ${widget.type}`);
-        }
-    }
-
-    /**
-     * Creates **contains transitions** between a component and its widgets.
-     * @param source The parent node (route/component).
-     * @param widgets The list of widgets contained within.
-     */
-    buildContainsTransitions(source: string | undefined, widgets: WidgetInfo[]): void {
-        if (source) {
-            for (const widget of widgets) {
-                const transitionExists = this.graph.transitions.some(
-                    (t) => t.from === source && t.to === widget.id && t.event === "contains"
-                );
-
-                if (!transitionExists) {
-                    this.graph.transitions.push({ from: source, to: widget.id, event: "contains" });
-                    console.log(`Contains transition added: ${source} -> ${widget.id}`);
-                }
-            }
-        }
-    }
-
-    /**
-    * Adds **global component transitions**.
-    * @param component The global component.
+    * Registers a node if not already present.
+    *
+    * @param id      Globally unique node ID (route path, component selector, widget ID, or virtual route)
+    * @param type    Semantic node type ("route"|"component"|"widget"|"virtual-route")
+    * @param partial Optional extras (e.g. `{ attributes: { role: "shared" } }` on components)
     */
-    buildGlobalTransitions(component: ComponentInfo): void {
-        const globalNodeId = `${component.selector}`;
-
-        if (!this.graph.nodes.find((node) => node.id === globalNodeId)) {
-            this.addGlobal(globalNodeId);
-            console.log(`Global node added: ${globalNodeId}`);
-        }
-
-        this.buildContainsTransitions(globalNodeId, component.widgets);
+    private _addNode(id: string, type: GraphNodeType, partial?: Partial<GraphNode>) {
+        id = id.replace(/\/{2,}/g, '/');
+        if (!this.nodes.has(id))
+            this.nodes.set(id, { id, type, ...partial });
     }
 
-    /**
-     * Adds **shared component transitions**.
-     * @param component The shared component.
-     * @param routeMap The route map.
-     * @param componentMap List of all components.
-     */
-    buildSharedTransitions(component: ComponentInfo, routeMap: RouteMap, componentMap: ComponentInfo[]): void {
-        const sharedNodeId = `${component.selector}`;
-
-        // Add shared node to the graph
-        if (!this.graph.nodes.find((node) => node.id === sharedNodeId)) {
-            this.addShared(sharedNodeId);
-            console.log(`Shared node added: ${sharedNodeId}`);
-        }
-
-        // Add contains transitions for shared node's widgets
-        this.buildContainsTransitions(sharedNodeId, component.widgets);
-
-        // Find parent routes and create transitions
-        const parentRoutes = RouteMapUtils.findParentRoutes(component, componentMap, routeMap);
-        parentRoutes.forEach(route => {
-            this.graph.transitions.push({ from: route, to: sharedNodeId, event: "contains" });
-            console.log(`Shared node transition added: ${route} -> ${sharedNodeId}`);
-        });
-    }
+    // ────────────────────────────────────────────────────────────────────────────
+    // STATIC EDGE RELATIONS
+    // ────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Adds **routerLink transitions** between widgets and routes.
-     * @param widgets The list of widgets.
+     * Phase 1: register **all** routes, components, nested-components and widgets
+     * as nodes, *and* tag each component node with its `ComponentRouteRole`
+     * (“root” | “global” | “shared” | “mapped” | “dead”).
+     *
+     * @param compRouteMap The Component Route Map including raw routes + `roles` record
+     * @param registry The component registry containing all the components of the project
      */
-    private buildRouterLinkTransitions(widgets: WidgetInfo[]): void {
-        for (const widget of widgets) {
-            let routerLink = widget.events.get("routerLink") || widget.attributes?.["routerLink"];
-            if (routerLink) {
-                const targetRoute = routerLink.startsWith('/') ? routerLink : `/${routerLink}`;
-                const routeNode = this.getRoute(targetRoute);
+    buildStatic(compRouteMap: ComponentRouteMap, registry: ComponentRegistry) {
+        // ─── 0) root component ────────────────────────────────
+        const rootNode = compRouteMap.roles.root[0]?.selector;
+        if (rootNode) {
+            // 1) add the root node itself
+            this._addNode(rootNode, "component", {
+                attributes: { role: "root" }
+            });
 
-                if (!routeNode) {
-                    console.warn(`Unmatched routerLink: ${routerLink} for widget ${widget.id}.`);
-                    continue;
+            // 2) connect the root node to the root route
+            this._addStaticEdge('/', rootNode);
+
+            // 3) connect the root node to its children components
+            const rootCi = registry.getBySelector(rootNode);
+            if (rootCi) {
+                for (const childSel of rootCi.nestedComponents) {
+                    let role = this._assignRole(childSel, compRouteMap.roles);
+                    this._addNode(childSel, "component", { attributes: { role } });
+                    this._addStaticEdge(rootNode, childSel);
+
+                    // child widgets of nested components will be added below
                 }
 
-                const transitionExists = this.graph.transitions.some(
-                    (t) => t.from === widget.id && t.to === routeNode.id && t.event === 'routerLink'
-                );
-
-                if (!transitionExists) {
-                    this.graph.transitions.push({
-                        from: widget.id,
-                        to: routeNode.id,
-                        event: 'routerLink',
-                    });
-
-                    console.log(`routerLink transition added: ${widget.id} -> ${routeNode.id}`);
-                }
+                // 4) connect the root node to its widget components that are not contained in nested components
+                for (const w of rootCi.widgets)
+                    this._registerWidgetsRecursively(w, rootCi.selector);
             }
         }
+
+        // ─── 1) routes ──────────────────────────────────────────────────────────
+        for (const { route } of compRouteMap.routeMap.routes) {
+            this._addNode(route, "route");
+        }
+
+        // ─── 2) components (with role attribute) ───────────────────────────────
+        for (const ci of registry.components) {
+            // skip the root entry—it's already been handled
+            if (ci.selector === rootNode)
+                continue;
+
+            // derive role from compRouteMap.roles.*
+            let role = this._assignRole(ci.selector, compRouteMap.roles);
+
+            this._addNode(ci.selector, "component", {
+                attributes: { role }
+            });
+
+            // 2a) route → component
+            const paths = RoutingUtils.getRoutesFromSelector(
+                ci.selector,
+                compRouteMap.routeMap
+            );
+            for (const path of paths)
+                this._addStaticEdge(path, ci.selector);
+
+            // 2b) nested-components
+            for (const child of ci.nestedComponents) {
+                let role = this._assignRole(child, compRouteMap.roles);
+                this._addNode(child, "component", { attributes: { role } });
+                this._addStaticEdge(ci.selector, child);
+            }
+
+            // 3) widgets under this component
+            for (const w of ci.widgets)
+                this._registerWidgetsRecursively(w, ci.selector);
+        }
     }
 
     /**
-     * Retrieves a **route node** from the graph.
-     * @param routeId The ID of the route.
-     * @returns The corresponding route node or `undefined`.
+     * @TODO update documentation similarly to previous modules
+     * @param widget 
+     * @param parentId 
      */
-    private getRoute(routeId: string): Node | undefined {
-        return this.graph.nodes.find(
-            (node) => node.type === 'route' && node.id === routeId
-        );
+    private _registerWidgetsRecursively(
+        widget: WidgetInfo,
+        parentId: string
+    ) {
+        // 1) register this widget as a node
+        this._addNode(widget.id, "widget", {
+            attributes: widget.attributes,
+            validationRules: widget.validationRules,
+            triggersFormSubmission: widget.triggersFormSubmission,
+        });
+
+        // 2) connect it to its parent (component or parent widget)
+        this._addStaticEdge(parentId, widget.id);
+
+        // 3) dive into any nested widgets
+        if (widget.children)
+            for (const child of widget.children)
+                this._registerWidgetsRecursively(child, widget.id);
     }
 
     /**
-     * Builds **navigation transitions** between widgets and backend services.
-     * @param widgetEventMaps The event mappings for widgets.
+     * Assigns a `ComponentRouteRole` to the component identified by its selector ("mapped" by default)
+     * 
+     * @param selector the selector of the component to tag
+     * @param roles the roles dictionary in the component route map
+     * @returns the `ComponentRouteRole` to be assigned to the component
      */
-    private buildNavigationTransitions(widgetEventMaps: WidgetEventMap[]): void {
-        for (const widgetEventMap of widgetEventMaps) {
-            for (const eventContext of widgetEventMap.events) {
-                for (const { called, data } of eventContext.calls) {
-                    if (called === "/backend" && !this.graph.nodes.find((n) => n.id === "/backend")) {
-                        this.graph.nodes.push({ id: "/backend", type: "virtual-route" });
-                        console.log('Virtual route node added: /backend');
+    private _assignRole(selector: string, roles: Record<ComponentRouteRole, ComponentInfo[]>): ComponentRouteRole {
+        const { global, shared, mapped, dead } = roles;
+        if (dead.some(c => c.selector === selector))
+            return "dead";
+        if (shared.some(c => c.selector === selector))
+            return "shared";
+        if (global.some(c => c.selector === selector))
+            return "global";
+        if (mapped.some(c => c.selector === selector))
+            return "mapped";
+
+        return "mapped";
+    }
+
+    /**
+     * Adds a static “contains” edge if it doesn’t already exist.
+     *
+     * @param from   Source node ID (route or component)
+     * @param to     Destination node ID (component, nested component, or widget)
+     * @param type   Edge Relation type (by default "contains")
+     */
+    private _addStaticEdge(from: string, to: string, type: StaticGraphRelationType = "contains") {
+        const exists = this.edges.find(e => e.from === from && e.to === to && e.type === type);
+        if (!exists)
+            this.edges.push({ from, to, type });
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // DYNAMIC TRANSITION RELATIONS
+    // ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Adds a dynamic transition if not already present.
+     *
+     * @param from     Source node ID (widget or route)
+     * @param to       Destination node ID (route, virtual-route, etc.)
+     * @param type     Transition type (`UserEventType` or `NavEventType`)
+     * @param metadata Optional metadata (e.g. route parameters)
+     */
+    private _addDynamicTransition(from: string, to: string, type: DynamicGraphRelationType, metadata?: Record<string, any>) {
+        const exists = this.transitions.some(t => t.from === from && t.to === to && t.type === type);
+        if (!exists)
+            this.transitions.push({ from, to, type, metadata });
+    }
+
+    /**
+     * Builds all dynamic transitions:
+     *  1) Ensures every route & widget node exists  
+     *  2) Adds static-redirect flows from `RouteMap.redirections`  
+     *  3) Converts each `WidgetEventMap` to event-driven transitions  
+     *
+     * @param routeMap        Full `RouteMap` (includes `routes` and `redirections`)
+     * @param components      All `ComponentInfo` entries
+     * @param widgetEventMaps All widget-event call contexts
+     */
+    buildDynamic(
+        routeMap: RouteMap,
+        components: ComponentInfo[],
+        widgetEventMaps: WidgetEventMap[]
+    ): void {
+        // a) Ensure route & widget nodes
+        for (const cmp of components) {
+            const parentRoutes = RoutingUtils.findParentRoutes(cmp, components, routeMap)
+                .map(r => r.replace(/\/{2,}/g, '/'))         // collapse any existing double-slashes
+                .map(r => r.startsWith('/') ? r : `/${r}`); // ensure a leading slash
+            parentRoutes.forEach(r => this._addNode(r, "route"));
+            cmp.widgets.forEach(w => this._addNode(w.id, "widget"));
+        }
+
+        // b) Static-redirect transitions
+        for (const { route, redirectTo } of routeMap.redirections) {
+            this._addNode(route, "route");
+            this._addNode(redirectTo, "route");
+            this._addDynamicTransition(route, redirectTo, "static-redirect");
+        }
+
+        // c) Widget-event transitions
+        // Precompute the set of all normalized route IDs, e.g. "/posts", "/users", etc.
+        const knownRoutes = new Set(routeMap.routes.map(r => r.route));
+        for (const wem of widgetEventMaps) {
+            for (const ev of wem.events) {
+                for (const call of ev.calls) {
+                    // If no target is called, skip
+                    if (!call.called)
+                        continue;
+
+                    // Normalize the target
+                    let called = call.called.startsWith("/")
+                        ? call.called
+                        : `/${call.called}`;
+
+                    let target: string = called;
+                    let nodeType: GraphNodeType = "route";
+
+                    // it's a real route
+                    if (knownRoutes.has(called))
+                        nodeType = "route";
+                    // virtual route
+                    else {
+                        target = `/virtual${target}`;
+                        nodeType = "virtual-route";
                     }
 
-                    // Check if the transition already exists before adding
-                    const transitionExists = this.graph.transitions.some(
-                        (t) => t.from === widgetEventMap.widgetID && t.to === called && t.event === eventContext.event
-                    );
-
-                    if (called && called.trim() !== "" && !transitionExists) {
-                        this.graph.transitions.push({
-                            from: widgetEventMap.widgetID,
-                            to: called,
-                            event: eventContext.event,
-                            metadata: { data }
-                        });
-
-                        console.log(`Transition added: ${widgetEventMap.widgetID} -> ${called} [${eventContext.event}]`);
-                    }
+                    this._addNode(target, nodeType);
+                    this._addDynamicTransition(wem.widgetID, target, ev.event, { params: call.data });
                 }
             }
         }

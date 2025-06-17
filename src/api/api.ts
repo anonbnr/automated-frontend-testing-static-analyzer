@@ -3,69 +3,174 @@ import cors from 'cors';
 import express, { Express, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { Project } from 'ts-morph';
+import { RouteAnalyzer } from '../analyzers/routes/route-analyzer.js';
+import { ComponentRegistryBuilder } from '../builders/component-registry-builder.js';
+import { ComponentRegistry } from '../models/component-info.js';
+import { AppNavigation } from '../models/navigation-graph.js';
+import { ComponentRouteMap } from '../models/route-info.js';
 import { StaticAnalyzer } from '../orchestrators/static-analyzer.js';
 
 const app: Express = express();
-const port = 3000;
+const port = process.env.PORT ?? 3000;
 
-// Middleware
-app.use(cors()); // Enable Cross-Origin Resource Sharing (CORS)
-app.use(bodyParser.json()); // Parse JSON request bodies
+app.use(cors());
+app.use(bodyParser.json());
+
+// utility to ensure tsconfig exists
+function resolveTsConfig(projectRoot: string): string | null {
+    const tsConfigPath = path.join(projectRoot, 'tsconfig.json');
+    return fs.existsSync(tsConfigPath) ? tsConfigPath : null;
+}
 
 /**
- * POST /analyze
- * 
- * Analyzes an Angular application by generating a navigation graph based on its routes,
- * components, and interactions.
- * 
- * Request Body:
- * - `projectRoot` (string): Absolute path to the root directory of the Angular project.
- * 
- * Response:
- * - 200 OK: Returns a JSON object with the navigation graph.
- * - 400 Bad Request: If `projectRoot` is missing or `tsconfig.json` is not found.
- * - 500 Internal Server Error: If an error occurs during analysis.
+ * POST /components
+ *
+ * Discovers every @Component in the workspace and returns the full registry.
+ *
+ * Request body:
+ *   { projectRoot: string }
+ *
+ * Response 200:
+ *   {
+ *     success: true,
+ *     components: ComponentInfo[]
+ *   }
  */
-app.post('/analyze', async (req: Request, res: Response) => {
+app.post('/components', async (req: Request, res: Response) => {
     const { projectRoot } = req.body;
+    if (!projectRoot) {
+        return res.status(400).json({ error: '`projectRoot` is required' });
+    }
 
-    if (!projectRoot)
-        return res.status(400).json({ error: 'Project root folder is required.' });
+    const tsConfigPath = resolveTsConfig(projectRoot);
+    if (!tsConfigPath) {
+        return res.status(400).json({ error: '`tsconfig.json` not found' });
+    }
 
     try {
-        // Define paths for TypeScript configuration and output files
-        const tsConfigPath = path.join(projectRoot, 'tsconfig.json');
-        console.log(`tsconfig.json path: ${tsConfigPath}`);
-        const outputDir = path.join(projectRoot, 'analysis');
-        const outputFilePath = path.join(outputDir, 'graph.json');
-
-        // Ensure the `tsconfig.json` file exists in the specified project root
-        if (!fs.existsSync(tsConfigPath))
-            return res.status(400).json({ error: 'tsconfig.json not found in the specified root folder.' });
-
-        // Initialize the static analyzer and generate the navigation graph
-        const analyzer = new StaticAnalyzer(tsConfigPath);
-        const navigationGraph = await analyzer.analyze();
-
-        // Ensure the output directory exists
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
-
-        // Save the navigation graph as a JSON file
-        fs.writeFileSync(outputFilePath, JSON.stringify(navigationGraph, null, 2), 'utf-8');
-
-        // Return the generated navigation graph as the response
-        res.json({ success: true, navigationGraph });
-    } catch (error) {
-        console.error('Error during analysis:', error);
-        res.status(500).json({ error: 'Failed to analyze the application.' });
+        const project = new Project({ tsConfigFilePath: tsConfigPath });
+        const registry: ComponentRegistry = await new ComponentRegistryBuilder(project).buildComponentsRegistry();
+        return res.json({ success: true, components: registry.components });
+    } catch (err: any) {
+        console.error('[/components] error:', err);
+        return res.status(500).json({ error: 'Failed to build component registry', details: err.message });
     }
 });
 
 /**
- * Starts the Express server on the specified port.
+ * POST /routes
+ *
+ * Runs the RouteAnalyzer and returns a full ComponentRouteMap.
+ *
+ * Request body:
+ *   { projectRoot: string }
+ *
+ * Response 200:
+ *   {
+ *     success: true,
+ *     routeMap: {
+ *       routes: ComponentRoute[],
+ *       redirections: RedirectRoute[],
+ *       roles: {
+ *         root: string[],    // selector of <app-root>
+ *         global: string[],  // selectors present on every route
+ *         shared: string[],  // selectors on multiple but not all routes
+ *         mapped: string[],  // selectors tied to exactly one route
+ *         dead: string[]     // selectors never used
+ *       }
+ *     }
+ *   }
  */
+app.post('/routes', async (req: Request, res: Response) => {
+    const { projectRoot } = req.body;
+    if (!projectRoot) {
+        return res.status(400).json({ error: '`projectRoot` is required' });
+    }
+
+    const tsConfigPath = resolveTsConfig(projectRoot);
+    if (!tsConfigPath) {
+        return res.status(400).json({ error: '`tsconfig.json` not found' });
+    }
+
+    try {
+        const project = new Project({ tsConfigFilePath: tsConfigPath });
+        const registry: ComponentRegistry = await new ComponentRegistryBuilder(project).buildComponentsRegistry();
+        const analyzer = new RouteAnalyzer(project);
+        const compRouteMap: ComponentRouteMap = await analyzer.analyzeProject(registry);
+
+        // Shallow‐serialize the new roles record
+        const dump = {
+            routes: compRouteMap.routeMap.routes,
+            redirections: compRouteMap.routeMap.redirections,
+            roles: {
+                root: compRouteMap.roles.root.map(c => c.selector),
+                global: compRouteMap.roles.global.map(c => c.selector),
+                shared: compRouteMap.roles.shared.map(c => c.selector),
+                mapped: compRouteMap.roles.mapped.map(c => c.selector),
+                dead: compRouteMap.roles.dead.map(c => c.selector),
+            }
+        };
+
+        return res.json({ success: true, routeMap: dump });
+    } catch (err: any) {
+        console.error('[/routes] error:', err);
+        return res.status(500).json({ error: 'Failed to analyze routes', details: err.message });
+    }
+});
+
+/**
+ * POST /graph
+ *
+ * Runs the full StaticAnalyzer pipeline and returns the navigation graph.
+ *
+ * Request body:
+ *   { projectRoot: string }
+ *
+ * Response 200:
+ *   {
+ *     success: true,
+ *     graph: AppNavigation
+ *   }
+ */
+app.post('/graph', async (req: Request, res: Response) => {
+    const { projectRoot } = req.body;
+    if (!projectRoot) {
+        return res.status(400).json({ error: '`projectRoot` is required' });
+    }
+
+    const tsConfigPath = resolveTsConfig(projectRoot);
+    if (!tsConfigPath) {
+        return res.status(400).json({ error: '`tsconfig.json` not found' });
+    }
+
+    try {
+        const analyzer = new StaticAnalyzer(tsConfigPath);
+        const graph: AppNavigation = await analyzer.analyze();
+        return res.json({ success: true, graph });
+    } catch (err: any) {
+        console.error('[/graph] error:', err);
+        return res.status(500).json({ error: 'Failed to build navigation graph', details: err.message });
+    }
+});
+
+/**
+ * Optional: POST /scenarios
+ *
+ * If you later implement ScenarioExtractor, you can wire it up here.
+ *
+ * app.post('/scenarios', (req, res) => {
+ *   const graph = req.body.graph as AppNavigation;
+ *   if (!graph) return res.status(400).json({ error: '`graph` is required' });
+ *   try {
+ *     const scenarios = new ScenarioExtractor(graph).extract();
+ *     res.json({ success: true, scenarios });
+ *   } catch (err) {
+ *     res.status(500).json({ error: 'Failed to extract scenarios', details: err.message });
+ *   }
+ * });
+ */
+
 app.listen(port, () => {
-    console.log(`Backend API running at http://localhost:${port}`);
+    console.log(`🚀 API listening on http://localhost:${port}`);
 });

@@ -1,77 +1,91 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// widget-processor.ts
+// analyzers/template/widgets/widget-processor.ts
 //
-// A `WidgetProcessor` that recursively traverses an Angular template AST
-// to extract **all** interactive widgets in a hierarchy (or flattenable tree).
-//
-// Responsibilities:
-//   - Assign unique IDs (via `WidgetIDGenerator`) when no `id` attribute exists.
-//   - Collect raw attributes, validation-rule flags, event handlers, and submission triggers.
-//   - Recursively descend into every element (and `<ng-template>`) so no widget is missed.
+// Traverses an Angular template AST to extract **all** interactive widgets.
+//   - Assigns unique IDs (via WidgetIDGenerator) when no `id` attribute exists
+//   - Collects raw attributes, validation-rule flags, event handlers, submission triggers
+//   - Recursively descends into every element and `<ng-template>` so no widget is missed
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { AST, TmplAstElement, TmplAstNode, TmplAstTemplate } from "@angular/compiler";
 import { NavEventType, UserEventType } from "../../../models/event-info.js";
 import { WidgetInfo } from "../../../models/widget-info.js";
 import { WidgetIDGenerator } from "./widget-id-generator.js";
+import logger from "../../../logging/logger.js";
 
 /**
- * Processes an Angular template to extract **interactive widgets**.
+ * Recursively scans an Angular template AST to build a hierarchy of interactive widgets.
  *
- * It does a level-based scan:
- *  - Phase 1: find “first-level” widgets (forms, anchors, etc.)
- *  - Phase 2: within *each* first-level element, scan for actual controls (buttons, inputs…)
- *  - (Optionally Phase 3: deeper controls under those, e.g. mat-option under mat-select)
+ * Scan phases:
+ *   1. Top-level “containers” (forms, anchors, etc.)
+ *   2. Controls within containers (buttons, inputs, selects, etc.)
+ *   3. Deeper nested controls (e.g. `<mat-option>` inside `<mat-select>`)
  *
- * The result is a tree of `WidgetInfo`, each with an optional `children: WidgetInfo[]`.
+ * Each `WidgetInfo` includes:
+ *   - `id`: unique identifier (namespace + generated ID)
+ *   - `type`: HTML or component tag name
+ *   - `attributes`: raw attribute map
+ *   - `events`: map of eventName → handlerName
+ *   - `validationRules`: list of HTML/form validations
+ *   - `triggersFormSubmission`: boolean flag
+ *   - `children`: nested WidgetInfo[]
+ *   - `originalNode`: original AST element of the widget
  */
 export class WidgetProcessor {
     private _idGen = new WidgetIDGenerator();
     private _widgetTags = new Set([
-        // HTML controls
+        // Standard HTML controls
         "button", "input", "option", "select", "textarea", "form", "a",
-        // Material (and any custom) widgets we care about
+        // Material (and any custom) widgets
         "mat-button", "mat-icon-button", "mat-select", "mat-checkbox",
         "mat-button-toggle-group", "mat-button-toggle",
         "mat-radio-group", "mat-radio-button",
         "mat-option", "mat-datepicker-toggle",
-        // …add any others here
     ]);
     private _validationRules = ['required', 'pattern', 'min', 'max', 'minLength', 'maxLength'];
 
     /**
      * Creates a new widget processor for the provided 
      * raw HTML/Angular template text
+     * 
+     * @param templateSource   The raw template text (used to extract event-handler source spans).
      */
     constructor(private templateSource: string) { }
 
     /**
-     * Traverse the AST and extract widgets in a recursive hierarchical scan
+     * Extracts all interactive widgets from the AST, namespaced by the component selector.
      *
-     * @param nodes
-     *   The top-level AST nodes.
-     * @returns
-     *   A tree of `WidgetInfo`, each with optional `children: WidgetInfo[]`.
+     * @param nodes      The top-level AST nodes from AngularTemplateParser.
+     * @param namespace  The component’s selector or class name (prepended to each widget ID).
+     * @returns          A tree of WidgetInfo, each with zero or more children.
      */
-    processWidgets(nodes: TmplAstNode[]): WidgetInfo[] {
-        return this._scanTemplateAST(nodes);
+    processWidgets(nodes: TmplAstNode[], namespace: string): WidgetInfo[] {
+        logger.info('[WidgetProcessor] Starting widget extraction for namespace="%s"', namespace);
+        this._idGen.resetCounters();
+
+        const widgets = this._scanTemplateAST(nodes, namespace);
+        logger.info('[WidgetProcessor] Completed extraction: found %d widgets in "%s"', widgets.length, namespace);
+        return widgets;
     }
 
     /**
-     * Recursively scans a mixed array of AST nodes.
-     * Builds a WidgetInfo for each “interactive” element, and always recurses.
+     * Recursively visits AST nodes, collecting widgets and descending into children.
+     *
+     * @param nodes      AST nodes to scan.
+     * @param namespace  Component namespace for ID generation.
+     * @returns          Flattened list of WidgetInfo trees.
      */
-    private _scanTemplateAST(nodes: TmplAstNode[]): WidgetInfo[] {
+    private _scanTemplateAST(nodes: TmplAstNode[], namespace: string): WidgetInfo[] {
         const widgets: WidgetInfo[] = [];
 
         for (const node of nodes) {
             if (node instanceof TmplAstElement) {
                 // Recurse first into children so nested widgets are discovered
-                const children = this._scanTemplateAST(node.children);
+                const children = this._scanTemplateAST(node.children, namespace);
 
                 // If this element qualifies as a widget, build an entry
                 if (this._isInteractive(node)) {
-                    const w: WidgetInfo = this._buildWidgetInfo(node);
+                    const w = this._buildWidgetInfo(node, namespace);
                     w.children = children;
                     widgets.push(w);
                 } else {
@@ -80,8 +94,8 @@ export class WidgetProcessor {
                 }
             }
             else if (node instanceof TmplAstTemplate) {
-                // Structural directives (<ng-template / *ngIf / *ngFor>)
-                widgets.push(...this._scanTemplateAST(node.children));
+                // Structural directives (*ngIf, *ngFor, ng-template, etc.)
+                widgets.push(...this._scanTemplateAST(node.children, namespace));
             }
             // other node types (text, bound text…) are ignored
         }
@@ -90,58 +104,74 @@ export class WidgetProcessor {
     }
 
     /**
-     * Heuristic for whether an element is “interactive”:
-     * - Its tag is in our widgetTags set
-     * - Or it has any Angular output (click, submit, change, etc.)
-     * - Or it has a routerLink input
+     * Determines if an element is “interactive”:
+     *   - Tag is in the set of known widget tags
+     *   - Has any Angular outputs (click, submit, etc.)
+     *   - Has a routerLink input
+     *
+     * Skips `<app-*>` elements with no outputs or routerLink.
      */
     private _isInteractive(el: TmplAstElement): boolean {
-        return this._widgetTags.has(el.name.toLowerCase())
+        // 1) Only skip app-* if it truly has no user-visible events on it
+        const tag = el.name.toLowerCase();
+        if (tag.startsWith('app-')
+            && el.outputs.length === 0
+            && !el.inputs.some(i => i.name === "routerLink"))
+            return false;
+
+        // 2) otherwise use widget heuristics
+        return this._widgetTags.has(tag)
             || el.outputs.length > 0
             || el.inputs.some(i => i.name === "routerLink")
     }
 
     /**
-     * @TODO update documentation and comments similar to previous modules
-     * Builds a `WidgetInfo` for a single `TmplAstElement`.
+     * Builds a WidgetInfo for a single AST element.
      *
-     * Steps:
-     *   1) Determine/generate `id`
-     *   2) Collect all raw attributes into `attributes: Record<string, any>`
-     *   3) Detect built-in validation rules (`required`, `pattern`, `min`, `max`)
-     *   4) Extract any Angular outputs (e.g. `(click)="onDo()"`) into `events[...]`
-     *   5) Extract routerLink/href into `events["routerLink"]` or `events["href"]`
-     *   6) Mark `triggersFormSubmission` if this element will submit a form:
-     *      - `<button type="submit">`
-     *      - `<input type="submit">`
-     *      - `<input type="image">`
-     *      - (Optionally) any other custom “submit-like” control to include
+     * @param el         The AST element.
+     * @param namespace  Component namespace for ID prefixing.
+     * @returns          A populated WidgetInfo (children assigned by caller).
      */
-    private _buildWidgetInfo(el: TmplAstElement): WidgetInfo {
-        // Collect raw attributes
+    private _buildWidgetInfo(el: TmplAstElement, namespace: string): WidgetInfo {
+        // Original AST node
+        const originalNode = el;
+
+        // Collect Attributes
         const attributes = this._collectAttributes(el);
 
-        return {
-            // ID: if literal id="..." exists, use that; otherwise generate
-            id: this._getID(el, attributes),
-            // Type: tag
-            type: el.name.toLowerCase(),
-            // Raw attributes
+        // Retrieve/Generate ID
+        const id = this._getID(el, attributes, namespace);
+
+        // Extract Type: tag of the widget
+        const type = el.name.toLowerCase();
+
+        // Collect Events (outputs + routerLink/href)
+        const events = this._collectEvents(el, attributes);
+
+        // Detect Validation Rules by attribute presence
+        const validationRules = this._detectValidationRules(attributes);
+
+        // Detect Form submission triggering status
+        const triggersFormSubmission = this._detectFormSubmission(el, attributes);
+
+        const widget: WidgetInfo = {
+            id,
+            type,
             attributes,
-            // Events (outputs + routerLink/href)
-            events: this._collectEvents(el, attributes),
-            // Validation rules by attribute presence
-            validationRules: this._detectValidationRules(attributes),
-            // Form submission triggering status
-            triggersFormSubmission: this._detectFormSubmission(el, attributes),
-            // Children
-            children: [] // will be filled in by the caller
+            events,
+            validationRules,
+            triggersFormSubmission,
+            // originalNode,
+            children: [], // will be filled in by the caller
         };
+
+        logger.debug('[WidgetProcessor] Built widget ID="%s", type="%s"', id, type);
+        return widget;
     }
 
     /**
-     * Gathers all raw attributes (name → value) from `widget.attributes`.
-     * Also ensures `<input>` has a default type of "text" if unspecified.
+     * Gathers raw attribute name → value pairs from an element.
+     * Ensures <input> has type="text" if none specified.
      */
     private _collectAttributes(el: TmplAstElement): Record<string, any> {
         const attributes: Record<string, any> = {};
@@ -149,37 +179,34 @@ export class WidgetProcessor {
         for (const attr of el.attributes)
             attributes[attr.name] = attr.value;
 
-        if (el.name.toLowerCase() === "input" && attributes.type == null)
+        if (el.name.toLowerCase() === "input" && !attributes.type)
             attributes.type = "text";
 
         return attributes;
     }
 
     /**
-     * @TODO update documentation and comments similar to previous modules
-     * Returns either the existing id="..." attribute value, or calls
-     * `idGenerator.generateID(widget)` if none was provided.
+     * Retrieves the existing ID of the element based on its attributes.
+     * Otherwise, generates a new ID if no ID attribute is already available.
+     * 
+     * Contextualizes the returned ID based on the namespace
+     * @param el            The AST element.
+     * @param attrs         The HTML attributes of the element
+     * @param namespace     Component namespace for ID prefixing.
+     * @returns             The namespace-contextualized (retrieved or generated) ID of the widget
      */
-    private _getID(el: TmplAstElement, attrs: Record<string, any>): string {
-        if (attrs.id?.trim())
-            return attrs.id;
-        return this._idGen.generateID(el);
+    private _getID(el: TmplAstElement, attrs: Record<string, any>, namespace: string): string {
+        // Check if the element already has an ID
+        // If not, generate a unique ID for it using the widget ID generator
+        const id = attrs.id?.trim() || this._idGen.generateID(el);
+
+        // Add namespace contextualization to the ID before returning it
+        return `${namespace}${this._idGen.ID_SEPARATOR}${id}`;
     }
 
     /**
-     * @TODO update documentation and comments similar to previous modules
-     * Extracts all relevant events for a widget, returning a map:
-     *   {  
-     *     // Router‐style
-     *     routerLink?: "/path",  
-     *     href?: "http://..."  
-     *     // Angular outputs (click, submit, input, change, or custom)
-     *     [outputName]: handlerName  
-     *   }
-     *
-     * 1) If `[routerLink]` or `routerLink` exists, store under "routerLink".
-     * 2) If `href` attribute exists on <a>, store under "href".
-     * 3) For every `node.outputs`, slice out the handler name via `_extractHandler(...)`.
+     * Extracts event bindings and routerLink/href into a map:
+     *   { routerLink?: string, href?: string, [outputName]: handlerName }
      */
     private _collectEvents(el: TmplAstElement, attrs: Record<string, any>):
         Record<UserEventType | NavEventType, string> {
@@ -204,19 +231,14 @@ export class WidgetProcessor {
         return events;
     }
 
-    /** Strip interpolation and quotes, same logic as before */
+    /** Cleans up routerLink/href values, stripping interpolation and quotes. */
     private _normalizeLink(raw: string): string {
         let v = raw.trim();
 
         // Strip out any mustache interpolation
         // e.g. "/owners/{{owner.id}}" → "/owners/:id"
-        const interpolateRegex = /\{\{\s*([\w$\.]+)\s*\}\}/g;
-        v = v.replace(interpolateRegex, (_, expr) => {
-            // take the last segment as the param name
-            const parts = expr.split(".");
-            const paramName = parts[parts.length - 1];
-            return `:${paramName}`;
-        });
+        const interp = /\{\{\s*([\w$\.]+)\s*\}\}/g;
+        v = v.replace(interp, (_, expr) => `:${expr.split('.').pop()}`);
 
         // Strip quotes
         const m = v.match(/'([^']+)'/);
@@ -224,25 +246,7 @@ export class WidgetProcessor {
             v = m[1];
 
         // Strip inline@ suffix
-        v = v.split(" in inline@")[0];
-        return v;
-    }
-
-    /**
-     * Scans `attributes` for standard validation‐rule presence and returns an array:
-     *   - "required" if `required` in attributes
-     *   - "pattern" if `pattern` in attributes
-     *   - "min" if `min` in attributes
-     *   - "max" if `max` in attributes
-     */
-    private _detectValidationRules(attributes: Record<string, any>): string[] {
-        const rules: string[] = [];
-
-        for (const targetRule of this._validationRules)
-            if (targetRule in attributes)
-                rules.push(targetRule);
-
-        return rules;
+        return v.split(" in inline@")[0];
     }
 
     /**
@@ -261,24 +265,24 @@ export class WidgetProcessor {
         // Use `start` and `end` from `sourceSpan` to extract the corresponding code snippet
         const { start, end } = handler.sourceSpan;
         // Slice from the template’s original text, then strip out trailing "()"
-        return this.templateSource.slice(start, end)
+        return this.templateSource
+            .slice(start, end)
             .replace(/\(\)\s*$/, "") // Normalization
             .trim();
     }
 
-    /**
-     * Detects whether this element should trigger form submission:
-     *   - `<button type="submit">`
-     *   - `<input type="submit">`
-     *   - `<input type="image">`
-     *   - (any custom “submit-like” tags must be added here if needed)
-     */
+    /** Gathers all standard validation rules present in the attribute map. */
+    private _detectValidationRules(attributes: Record<string, any>): string[] {
+        return this._validationRules.filter(r => r in attributes);
+    }
+
+    /** Determines if an element should trigger form submission. */
     private _detectFormSubmission(el: TmplAstElement, attrs: Record<string, any>): boolean {
         const tag = el.name.toLowerCase();
         const type = (attrs.type || "").toLowerCase();
 
         return (tag === "button" && type === "submit") // a) <button type="submit">
-            || (tag === "input" && (type === "submit" || type === "image")) // b) <input type="submit"> or <input type="image">
+            || (tag === "input" && ["submit", "image"].includes(type)) // b) <input type="submit"> or <input type="image">
             || (tag === "mat-button" && type === "submit"); // c) (other custom “submit” tags—e.g. a third‐party component—check here)
     }
 }

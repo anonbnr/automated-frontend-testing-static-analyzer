@@ -1,76 +1,72 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// event-info.ts
+// models/event-info.ts
 //
-// Contains all the “event-centric” types used to represent user and navigation
-// events, plus the shape of the runtime call‐graphs they produce:
-//
-//   - `UserEventType`     – names of DOM-style widget events (click, submit, etc.)
-//   - `NavEventType`      – names of navigation events (routerLink, href, etc.)
-//   - `EventHandlerCallContext` – one function call inside an event handler
-//   - `EventContext`      – one widget’s event binding, its handler, and all calls
-//   - `WidgetEventMap`    – maps a widget’s unique ID to its full list of `EventContext`
-//
-// These types underpin the business‐logic analysis: mapping from UI widgets and
-// their template bindings to the actual methods invoked, and capturing the
-// sequence of service calls or navigation transitions that each handler performs.
+// Contains types for UI and navigation events and their call graphs:
+//   - UserEventType              (DOM-style widget events)
+//   - NavEventType               (routing/navigation events)
+//   - EventHandlerCallContext    (one function-call inside an event handler)
+//   - EventContext               (one widget’s event, its handler, and the calls)
+//   - WidgetEventMap             (maps widgetID → EventContext[])
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * DOM-style widget events (e.g. `<button (click)="...">`, `<form (submit)="...">`).
- * Known built-ins: 'click', 'submit', 'input', 'change'.  
- * Additional custom event names (e.g. 'mouseover', 'dblclick') can be also added.
+ * Names of DOM-style widget events, e.g. `<button (click)="...">` or `<form (submit)="...">`.
+ * Built-ins include `'click'`, `'submit'`, `'input'`, and `'change'`.
+ * Custom event names (e.g. `'mouseover'`) are also allowed.
  */
-export type UserEventType =
-    'click'
+export type UserEventType
+    = 'click'
     | 'submit'
     | 'input'
     | 'change'
-    | string  // Any other custom event string
-    ;
+    | string;  // Any other custom event string
 
 /**
- * Navigation-style events, used for routing or redirection.
- *   - 'routerLink'    – Angular `<a [routerLink]="...">`
- *   - 'href'          – plain anchor link
- *   - 'static-redirect' – route file configured redirect
+ * Names of navigation-style events, used for routing or redirection.
+ * - `'routerLink'`       → Angular `<a [routerLink]="...">`  
+ * - `'href'`             → plain anchor link  
+ * - `'static-redirect'`  → route file configured redirect  
  */
 export type NavEventType
     = 'routerLink'
     | 'href'
-    | 'static-redirect'
-    ;
+    | 'static-redirect';
 
 /**
- * Represents a single function‐call inside an event handler.
+ * Represents a single function call made inside an event handler.
+ * 
+ * Example:
+ * ```ts
+ * // In component code:
+ * this.router.navigate(['/users']);
  *
- * For example, if a component method does:
- *   `this.router.navigate(['/users']);`
- * then one `EventHandlerCallContext` might be:
- *   `{ caller: 'this.router', called: '/users', data: [] }`
+ * // Captured as:
+ * {
+ *   caller: 'this.router',
+ *   called: 'navigate',
+ *   data: ['/users']
+ * }
+ * ```
  */
 export interface EventHandlerCallContext {
     /**
-     * The object or service that makes the call (e.g. 'this.router', 'this.userService').
+     * Object or service making the call (e.g. 'this.router', 'this.userService').
      */
     caller: string;
 
     /**
-     * The endpoint or function being called (e.g. '/users' or 'savePost').
+     * Target function being called (e.g. 'navigate', 'savePost').
      */
     called: string;
 
     /**
-     * Any additional parameters passed to that call (e.g. route params, payload strings).
+     * Parameters passed to the call (e.g. route params or payload values).
      */
     data: string[];
 }
 
 /**
- * Represents one event‐handler binding on a widget, plus all the calls that handler makes.
- *
- * - `event`   : the event name (click, submit, routerLink, etc.)
- * - `handler` : the component method name (e.g. 'onSave')
- * - `calls`   : a list of `EventHandlerCallContext` in execution order
+ * Describes one widget event binding, its handler, and all calls made in that handler.
  */
 export interface EventContext {
     /**
@@ -79,30 +75,31 @@ export interface EventContext {
     event: UserEventType | NavEventType;
 
     /**
-     * The component’s method bound to this event (e.g. 'onSavePost', 'onFormSubmit').
+     * The component method bound to this event (e.g. 'onSavePost', 'onFormSubmit').
      */
     handler: string;
 
     /**
-     * All the function calls made inside that handler, in order.
+     * List of all function call contexts extracted from that handler, in execution order.
      */
-    calls: EventHandlerCallContext[];
+    callContexts: EventHandlerCallContext[];
 }
 
 /**
- * Maps one widget (by its unique `widgetID`) to all of its event‐handler contexts.
+ * Maps a widget’s unique ID to its full list of event contexts.
  *
- * This is the primary output of `LogicAnalyzer.analyze()`: for each interactive
- * widget, a list of `EventContext` entries showing how the UI drives business logic.
+ * This is the main output of the business-logic analyzer: for each interactive
+ * widget, you get a `WidgetEventMap` showing how UI events drive method calls
+ * and navigation.
  */
 export interface WidgetEventMap {
     /**
-     * The same `WidgetInfo.id` for which these event contexts apply.
+     * The `WidgetInfo.id` for which these events apply.
      */
     widgetID: string;
 
     /**
-     * A list of all event/handler/calls contexts for this widget.
+     * All event/handler/calls contexts for this widget.
      */
-    events: EventContext[];
+    eventContexts: EventContext[];
 }

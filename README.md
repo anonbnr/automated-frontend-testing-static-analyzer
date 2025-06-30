@@ -1,51 +1,61 @@
 # Automated Frontend Testing Static Analyzer
-A core component of our **Frontend Automation Framework**, the Static Analyzer performs deep **static analysis** of Angular applications to produce a comprehensive **Navigation Graph**. That graph captures:
+A core part of our **Frontend Automation Framework**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph**. The graph models:
 
-- **Routes** and **redirects**  
-- **Components** and their hierarchical nesting  
-- **Interactive widgets** (buttons, forms, links, etc.)  
-- **Event bindings**, **router navigations**, **service calls**  
-- **Form validation rules** and **submission triggers**  
+- **Routes** & **redirects**  
+- **NgModules** & component declarations  
+- **Components** & their nested child selectors  
+- **Interactive widgets** (buttons, forms, links, Material controls)  
+- **Event bindings** → handler call graphs (`router.navigate`, service calls, custom logic)  
+- **Form validation rules** & **submission triggers**  
 
-This powers automated test-scenario generation and frontend regression testing.
+This graph can drive automated test‐scenario generation, regression testing, coverage analysis, and more.
 
 ---
 
-## ⚙️ Features
-1. **Component Discovery**  
-   - Scans your entire codebase for `@Component` classes  
-   - Loads inline templates or external `templateUrl` files  
-   - Extracts component selectors, class names, nested child selectors  
-2. **Template Analysis**  
-   - Parses Angular templates into an AST  
-   - Identifies every interactive widget (forms, buttons, inputs, anchors, Material controls, etc.)  
-   - Generates stable, meaningful widget IDs  
-   - Captures widget attributes, validation rules, submission triggers  
+## 🚀 Features
+1. **Module Discovery**  
+   - Scans all `@NgModule` classes in your workspace  
+   - Classifies each module as **root**, **routing**, **external**, **global**, or **shared**  
+2. **Component & Template Analysis**  
+   - Finds every `@Component`, loads its inline or external template  
+   - Parses the template AST to extract:
+     - Component selector & class name  
+     - Nested `<app-*>` child components  
+     - Interactive widgets (forms, inputs, buttons, anchors, Material, etc.)  
+     - Stable, descriptive widget IDs  
+     - Widget attributes, event handlers, validation rules, submission flags  
 3. **Route Analysis**  
-   - Gathers all Angular routes (`Routes` arrays, `RouterModule.forRoot` / `forChild`)  
-   - Handles eager and lazy loading (`component`, `loadChildren`, `loadComponent`)  
-   - Dedupe, normalize paths (leading `/`) and classify component roles:  
+   - Gathers all Angular routes via `Routes[]` and `RouterModule.forRoot/forChild`  
+   - Supports eager components, lazy modules (`loadChildren`), standalone components (`loadComponent`)  
+   - Normalizes & de-dupes paths, handles redirects  
+   - Classifies component usage roles:  
      - **root** (`<app-root>`)  
-     - **global** (appears on *every* route)  
-     - **shared** (on multiple routes)  
+     - **global** (present on *every* route)  
+     - **shared** (on multiple but not all routes)  
      - **mapped** (tied to exactly one route)  
      - **dead** (never used)  
-4. **Logic Analysis**  
-   - Inspects each component’s TypeScript AST via `ts-morph`  
-   - Wires every widget event (`click`, `submit`, custom, `[routerLink]`, `href`) to its handler  
-   - Extracts ordered call graphs: `router.navigate`, service calls, backend interactions  
-   - Resolves dynamic route parameters against your `RouteMap`  
-   - Pulls form control validators (`Validators.required`, `Validators.minLength`, etc.)  
+4. **Business-Logic Analysis**  
+   - Uses **ts-morph** to inspect each component’s TypeScript AST  
+   - Maps each widget event (`click`, `submit`, `[routerLink]`, `href`, custom) to:
+     - Event handler methods  
+     - `router.navigate([...])` calls (route segments)  
+     - Service calls (`this.myService.*`) marked as backend interactions  
+     - Inline fragment navigations  
+   - Extracts form-control validators (`Validators.*`) and applies them back to widgets  
 5. **Navigation Graph Builder**  
-   - Builds a **multigraph** of:  
-     - **Nodes**: routes, components, widgets, virtual-routes  
-     - **Static “contains” edges**: route→component→nestedComponent/widget  
-     - **Dynamic transitions**: widget events → route or virtual target  
-   - Exposes the resulting `AppNavigation` for downstream tools  
-6. **Express API**  
-   - **`POST /components`** → returns all `ComponentInfo`  
-   - **`POST /routes`** → returns deduped `RouteMap` + component roles  
-   - **`POST /graph`** → returns full `AppNavigation` multigraph  
+   - Builds a **multigraph** (`AppNavigation`) with:
+     - **Static edges** (`contains`, `imports`, `declares`) for modules→routes→components→widgets  
+     - **Dynamic transitions** (`click`, `routerLink`, `navigate`, `lazy-load`, `static-redirect`)  
+   - Exports the graph as JSON for downstream tools  
+6. **Express-based REST API**  
+   - **POST** `/modules`           → all NgModule metadata  
+   - **POST** `/components`        → all ComponentInfo (selectors, widgets, nested selectors)  
+   - **POST** `/routes`            → routes, redirects, component roles  
+   - **POST** `/template`          → single ComponentInfo by selector  
+   - **POST** `/widgets`           → widget tree for one component  
+   - **POST** `/widget-id`         → flattened widget IDs for one component  
+   - **POST** `/business-logic`    → widget→event call graphs  
+   - **POST** `/graph`             → full `AppNavigation` multigraph  
 
 ---
 
@@ -54,7 +64,17 @@ This powers automated test-scenario generation and frontend regression testing.
 automated-frontend-testing-static-analyzer/
 ├── src/
 │   ├── api/
-│   │   └── api.ts                        # Express endpoints: /components, /routes, /graph
+│   │   ├── middleware.ts           # CORS, JSON body parser, error handler
+│   │   ├── routes/
+│   │   │   ├── modules.ts
+│   │   │   ├── components.ts
+│   │   │   ├── routes.ts
+│   │   │   ├── template.ts
+│   │   │   ├── widgets.ts
+│   │   │   ├── widget-id.ts
+│   │   │   ├── business-logic.ts
+│   │   │   └── graph.ts
+│   │   └── index.ts               # Express app entry point
 │   ├── analyzers/
 │   │   ├── business-logic/
 │   │   │   ├── logic-analyzer.ts
@@ -70,61 +90,81 @@ automated-frontend-testing-static-analyzer/
 │   │           └── widget-processor.ts
 │   ├── builders/
 │   │   ├── component-registry-builder.ts
+│   │   ├── module-registry-builder.ts
 │   │   └── navigation-graph-builder.ts
-│   ├── models/
-│   │   ├── component-info.ts
-│   │   ├── event-info.ts
-│   │   ├── navigation-graph.ts
-│   │   ├── route-info.ts
-│   │   └── widget-info.ts
 │   ├── orchestrators/
-│   │   └── static-analyzer.ts
+│   │   └── static-analyzer.ts       # five-phase pipeline
 │   ├── parsers/
+│   │   ├── ast-utils.ts
 │   │   └── template-parser.ts
-│   └── index.ts                         # (optional CLI entry, if you choose to add it)
+│   └── models/
+│       ├── component-info.ts
+│       ├── event-info.ts
+│       ├── module-info.ts
+│       ├── navigation-graph.ts
+│       ├── route-info.ts
+│       └── widget-info.ts
 ├── .gitignore
-├── LICENSE
-├── package.json                         
-├── package-lock.json                    
-└── tsconfig.json
+├── nodemon.json                    # `npm run dev` configuration
+├── package.json
+├── tsconfig.json
+└── LICENSE
 ```
 
 ---
 
-## 🚀 Installation & Build
+## 🛠 Installation & Build
 ```bash
-# 1. Clone
-git clone https://github.com/anonbnr/automated-frontend-testing-static-analyzer
+# Clone
+git clone https://github.com/anonbnr/automated-frontend-testing-static-analyzer.git
 cd automated-frontend-testing-static-analyzer
 
-# 2. Install
+# Install dependencies
 npm install
 
-# 3. Build
+# Build TypeScript to JavaScript
 npm run build
+```
+
+### Development Mode
+
+```bash
+npm run dev
+# → watches `src/**/*.ts` and restarts on changes via nodemon
 ```
 
 ---
 
 ## 🖥️ Running the API Server
-Starts on port **3000** by default (configurable via `PORT` env).
+By default, the server listens on port **3000** (override with `PORT` in your environment).
 
 ```bash
 npm start
 ```
 
-## 🔌 API Usage
-All endpoints expect a JSON body:
+---
 
+## 🔌 API Reference
+All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/your/angular/project"` and, where required, `"selector": "app-your-component"`.
+
+### POST `/modules`
 ```json
-{ "projectRoot": "/absolute/path/to/your/angular/project" }
+{ "projectRoot": "/path/to/angular/app" }
 ```
 
-### 1. Discover Components
-```http
-POST http://localhost:3000/components
-Content-Type: application/json
+**Response**
 
+```json
+{
+  "success": true,
+  "modules": [ /* ModuleInfo[] */ ]
+}
+```
+
+---
+
+### POST `/components`
+```json
 { "projectRoot": "/path/to/angular/app" }
 ```
 
@@ -137,11 +177,10 @@ Content-Type: application/json
 }
 ```
 
-### 2. Analyze Routes
-```http
-POST http://localhost:3000/routes
-Content-Type: application/json
+---
 
+### POST `/routes`
+```json
 { "projectRoot": "/path/to/angular/app" }
 ```
 
@@ -151,24 +190,96 @@ Content-Type: application/json
 {
   "success": true,
   "routeMap": {
-    "routes": [ /* ComponentRoute[] */ ],
-    "redirections": [ /* RedirectRoute[] */ ],
+    "routes":        [ /* ComponentRoute[] */ ],
+    "redirections":  [ /* RedirectRoute[] */ ],
     "roles": {
-      "root": ["app-root"],
-      "global": [/* selectors */],
-      "shared": [/* selectors */],
-      "mapped": [/* selectors */],
-      "dead":   [/* selectors */]
+      "root":    ["app-root"],
+      "global":  [/* selectors */],
+      "shared":  [/* selectors */],
+      "mapped":  [/* selectors */],
+      "dead":    [/* selectors */]
     }
   }
 }
 ```
 
-### 3. Build Navigation Graph
-```http
-POST http://localhost:3000/graph
-Content-Type: application/json
+---
 
+### POST `/template`
+```json
+{
+  "projectRoot": "/path/to/angular/app",
+  "selector":    "app-some-component"
+}
+```
+
+**Response**
+
+```json
+{
+  "success": true,
+  "component": { /* ComponentInfo */ }
+}
+```
+
+---
+
+### POST `/widgets`
+```json
+{
+  "projectRoot": "/path/to/angular/app",
+  "selector":    "app-some-component"
+}
+```
+
+**Response**
+
+```json
+{
+  "success": true,
+  "widgets": [ /* WidgetInfo tree, recursive */ ]
+}
+```
+
+---
+
+### POST `/widget-id`
+```json
+{
+  "projectRoot": "/path/to/angular/app",
+  "selector":    "app-some-component"
+}
+```
+
+**Response**
+
+```json
+{
+  "success": true,
+  "widgetIDs": [ "app-some-component__BUTTON__save__a1b2c3d4", ... ]
+}
+```
+
+---
+
+### POST `/business-logic`
+```json
+{ "projectRoot": "/path/to/angular/app" }
+```
+
+**Response**
+
+```json
+{
+  "success": true,
+  "widgetEventMaps": [ /* WidgetEventMap[] */ ]
+}
+```
+
+---
+
+### POST `/graph`
+```json
 { "projectRoot": "/path/to/angular/app" }
 ```
 
@@ -178,8 +289,8 @@ Content-Type: application/json
 {
   "success": true,
   "graph": {
-    "nodes":   [ /* GraphNode[] */ ],
-    "edges":   [ /* GraphEdge[] */ ],
+    "nodes":       [ /* GraphNode[] */ ],
+    "edges":       [ /* GraphEdge[] */ ],
     "transitions": [ /* GraphTransition[] */ ]
   }
 }
@@ -187,23 +298,15 @@ Content-Type: application/json
 
 ---
 
-## ⚒️ Configuration
-You can override defaults via environment variables:
+## ⚙️ Configuration
+Create a `.env` in project root or export environment variables:
 
-```dotenv
-# .env
+```bash
+# API server port
 PORT=3000
 ```
 
 ---
 
-## 🔮 Roadmap
-1. **Scenario Extraction** — integrate `ScenarioExtractor` (seasonal).
-2. **Automated Test Generation** — from the Navigation Graph.
-3. **Error Resilience** — richer diagnostics & partial-fail recovery.
-4. **Multi-framework Support** — React, Vue, etc.
-
----
-
-## 📄 License
+## 📜 License
 [MIT](LICENSE)

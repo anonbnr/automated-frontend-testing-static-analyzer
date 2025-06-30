@@ -1,37 +1,21 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// widget-id-generator.ts
+// analyzers/template/widgets/widget-id-generator.ts
 //
-// A WidgetIDGenerator module that:
-//   1) Provides a centralized class for generating unique IDs for template widgets
-//      in Angular templates.
-//   2) Supports four ID-generation strategies, in priority order:
-//        - Contextual ID: uses meaningful attributes (e.g., `name`, `formControlName`, `value`, `placeholder`)
-//        - Binding-based ID: uses Angular-bound properties (e.g., `[formGroup]`, `[routerLink]`) — only for FORM tags
-//        - Default/text-based ID: uses the widget’s text content (e.g., button label)
-//        - Symbolic ID: a fallback counter per widget type, with a UUID suffix to guarantee uniqueness
-//   3) Ensures ID uniqueness by appending a short UUID v4 to any ID containing a context or when falling back.
-//
-// To add or tweak which attributes are considered “contextual” for a given tag, update the
-// `CONTEXTUAL_ATTRS_BY_TAG` map below—no need to alter algorithm in `generateID()`.
-//
-// Example attribute mappings (all uppercase tag names):
-//   BUTTON     → [ 'name', 'value', 'formControlName' ]
-//   A          → [ 'routerLink', 'href', 'name', 'formControlName', 'value' ]
-//   INPUT      → [ 'name', 'formControlName', 'value', 'placeholder' ]
-//   MAT-SELECT → [ 'name', 'formControlName' ]
-//   TEXTAREA   → [ 'name', 'formControlName' ]
-//   MAT-CHECKBOX, etc. will use same as INPUT (handled via a simple rule below).
+// Generates unique, concise IDs for interactive widgets in Angular templates.
+//   - Contextual IDs from key attributes (name, formControlName, value, placeholder)
+//   - Binding-based IDs for `<form>` elements ([formGroup], etc.)
+//   - Text-based IDs from button/anchor text when no attributes are present
+//   - Symbolic fallback IDs per tag plus an 8-hex-digit UUID suffix
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { v4 as uuidv4 } from 'uuid';
 
 import { TmplAstBoundAttribute, TmplAstElement, TmplAstNode, TmplAstText } from "@angular/compiler";
+import logger from '../../../logging/logger.js';
 
 /**
- * A lookup of “contextual attribute names” keyed by uppercase tag name.
- * If a tag appears here, `generateContextualID` will check its listed attributes in order.
- * If the tag is not a direct key but is considered an “alias” (e.g. custom “MAT-…” tags),
- * it falls back to the INPUT-like attributes (see code below).
+ * Maps uppercase tag names to their “contextual” attribute priorities.
+ * If a tag isn’t listed but is INPUT-like (checkboxes, radios, toggles), INPUT's list is used.
  */
 const CONTEXTUAL_ATTRS_BY_TAG: Record<string, string[]> = {
     'BUTTON': ['name', 'value', 'formControlName'],
@@ -47,8 +31,8 @@ const CONTEXTUAL_ATTRS_BY_TAG: Record<string, string[]> = {
 };
 
 /**
- * Tags that behave like “INPUT” (i.e. checkbox, radio, toggle, etc.).
- * They all share the same contextual attributes: name/formControlName/value/placeholder.
+ * Tags considered “INPUT-like”, sharing the same contextual attributes:
+ * name, formControlName, value, placeholder.
  */
 const INPUT_LIKE_TAGS = new Set([
     'INPUT',
@@ -60,123 +44,139 @@ const INPUT_LIKE_TAGS = new Set([
 ]);
 
 /**
- * Generates **unique identifiers (IDs)** for widgets in Angular templates.
+ * Generates compact, unique widget IDs for Angular template elements.
  *
- * Each generated ID follows one of two formats:
- *   - `<WIDGET>__<context_or_text>__<UUID>`    (if context or text is found)
- *   - `<WIDGET>__<count>__<UUID>`                (fallback symbolic ID with UUID)
+ * ID formats:
+ *   - `<TAG>__<context_or_text>__<8hexUUID>`
+ *   - `<TAG>__<count>__<8hexUUID>`   (symbolic fallback)
  *
- * Priority order for generating IDs:
- *   1. Contextual ID    – checks attributes (e.g. `name`, `formControlName`, `value`, `placeholder`)
- *   2. Binding-based ID – checks Angular-bound properties (`[]` or `[()]`) **only for `<form>` tags**
- *   3. Default/text ID  – inspects the element’s inner text nodes (e.g., button or anchor text)
- *   4. Symbolic ID      – a simple `<WIDGET>__<n>__<UUID>` counter if no other context is found
+ * Generation priority:
+ *   1. Contextual  – key attributes (e.g. name, value, placeholder)
+ *   2. Binding     – Angular-bound props (only for `<form>`)
+ *   3. Text-based  – button/anchor inner text
+ *   4. Symbolic    – per-tag counter
  *
- * To avoid collisions, every ID (whether contextual or symbolic) gets a v4 UUID appended.
- * If you need to clear counts between parsing multiple templates, call `resetCounters()`.
+ * Call `resetCounters()` to clear per-tag symbolic counts between templates.
  */
 export class WidgetIDGenerator {
     /** Tracks how many times each uppercase tag name has fallen back to symbolic. */
     private occurrences: Map<string, number> = new Map();
 
     /** The string used to separate parts of the ID. */
-    private readonly ID_SEPARATOR = '__';
+    readonly ID_SEPARATOR = '__';
 
     /**
-     * Generates a **unique widget ID** for the given Angular template element.
+     * Generate a unique ID for the given template element.
      *
-     * @param widget - The Angular template widget element (TmplAstElement).
-     * @returns     - A unique string ID, guaranteed not to collide (due to appended UUID).
+     * @param widget  The AST element to generate an ID for.
+     * @returns       A string like `BUTTON__save__a1b2c3d4`.
      */
     generateID(widget: TmplAstElement): string {
         const tag = widget.name.toUpperCase();
+        logger.log('trace', '[WidgetIDGenerator] Generating ID for <%s>', tag);
 
-        // 1) Try contextual attributes, if defined for this tag or it’s input-like
-        let id: string | null = null;
-        if (INPUT_LIKE_TAGS.has(tag)) {
-            // All INPUT-like tags share the same attribute list:
-            id = this._generateContextualID(widget, ['name', 'formControlName', 'value', 'placeholder']);
-        }
+        let base: string | undefined = undefined;
+
+        // 1) Contextual attributes
+        if (INPUT_LIKE_TAGS.has(tag))
+            base = this._tryContextual(widget, ['name', 'formControlName', 'value', 'placeholder']);
         else if (CONTEXTUAL_ATTRS_BY_TAG[tag])
-            id = this._generateContextualID(widget, CONTEXTUAL_ATTRS_BY_TAG[tag]);
+            base = this._tryContextual(widget, CONTEXTUAL_ATTRS_BY_TAG[tag]);
 
-        // 2) If still none, but tag == FORM, try binding-based ID
-        if (!id && tag === 'FORM')
-            id = this._generateBindingID(widget);
+        if (base)
+            logger.log('trace', '[WidgetIDGenerator] Contextual base "%s" for %s', base, tag);
 
-        // 3) If still none, try default/text-based ID
-        if (!id)
-            id = this._generateDefaultID(widget);
+        // 2) Binding-based (forms only)
+        if (!base && tag === 'FORM'){
+            base = this._tryBinding(widget);
+            if (base)
+                logger.log('trace', '[WidgetIDGenerator] Binding base "%s" for FORM', base);
+        }
 
-        // 4) If still none, fallback to symbolic ID
-        if (!id)
-            id = this._generateSymbolicID(widget);
+        // 3) Text-based
+        if (!base){
+            base = this._tryText(widget);
+            if (base)
+                logger.log('trace', '[WidgetIDGenerator] Text base "%s" for %s', base, tag);
+        }
 
-        return id;
+        // 4) Symbolic fallback
+        if (!base){
+            base = this._symbolicBase(tag);
+            logger.log('trace', '[WidgetIDGenerator] Symbolic fallback base "%s" for %s', base, tag);
+        }
+
+        // De-duplicate base within this template
+        const count = (this.occurrences.get(base) || 0) + 1;
+        this.occurrences.set(base, count);
+        const uniqueBase = count === 1 ? base : `${base}${this.ID_SEPARATOR}${count}`;
+
+        logger.debug('[WidgetIDGenerator] Final ID for %s → %s', tag, uniqueBase);
+        return uniqueBase;
     }
 
     /**
-     * Clears all per-widget-type counters. Call this before parsing a new template file
-     * if you want symbolic IDs to restart at 1 per tag in each template.
+     * Clears the per-base counters for symbolic de-duplication.
      */
     resetCounters(): void {
         this.occurrences.clear();
+        logger.log('trace', '[WidgetIDGenerator] resetCounters() called, occurrences cleared');
     }
 
     /**
-     * Generates an ID **based on meaningful attributes** (e.g., `name`, `value`, `formControlName`, `placeholder`).
+     * Generates an ID based on contextual attributes in priority order.
      *
      * Example:
      *   <input name="username">    →  `INPUT__username__c1a2b3d4-e5f6-...`
      *   <button value="save">      →  `BUTTON__save__a7b8c9d0-e1f2-...`
      *
      * @param widget      - The TmplAstElement to inspect.
-     * @param attributes  - An array of attribute names to check, in priority order.
-     * @returns           - A contextual ID (with UUID) or `null` if none of those attributes exist.
+     * @param attrs  - An array of attribute names to check, in priority order.
+     * @returns           - A contextual ID (with UUID) or `undefined` if none of those attributes exist.
      */
-    private _generateContextualID(widget: TmplAstElement, attributes: string[]): string | null {
-        for (const attrName of attributes) {
-            const attr = widget.attributes.find((a) => a.name === attrName);
+    private _tryContextual(widget: TmplAstElement, attrs: string[]): string | undefined {
+        for (const name of attrs) {
+            const attr = widget.attributes.find((a) => a.name === name);
             if (attr?.value?.trim()) {
                 // Sanitize: replace spaces or hyphens with underscore, then lowercase.
                 const sanitized = attr.value
                     .trim()
                     .replace(/[\s\-]+/g, "_")
                     .toLowerCase();
-                return this._composeWithUuid(widget.name, sanitized);
+                return this._composeWithShortUuid(widget.name, sanitized);
             }
         }
-        return null;
+        return undefined;
     }
 
     /**
-     * Generates an ID **based on Angular property bindings** (`[]` or `[()]` syntax).
+     * Generates an ID based on Angular property bindings (`[]` or `[()]` syntax).
+     * 
+     * Only invoked for `<form>`.
      *
      * Example:
      *   <form [formGroup]="userForm">   → `FORM__userForm__d4e5f6a7-...`
      *
-     * Only invoked when tag === 'FORM'.
-     *
      * @param widget - The TmplAstElement representing the FORM.
-     * @returns      - A binding-based ID or `null` if no bound attribute found.
+     * @returns      - A binding-based ID or `undefined` if no bound attribute found.
      */
-    private _generateBindingID(widget: TmplAstElement): string | null {
+    private _tryBinding(widget: TmplAstElement): string | undefined {
         for (const input of widget.inputs) {
             if (input instanceof TmplAstBoundAttribute) {
-                const rawValue = input.value
+                const raw = input.value
                     .toString()
                     .split(/\s+/)[0]
                     .trim();
-                if (rawValue)
-                    return this._composeWithUuid(widget.name, rawValue);
+                if (raw)
+                    return this._composeWithShortUuid(widget.name, raw);
             }
         }
 
-        return null;
+        return undefined;
     }
 
     /**
-     * Generates an ID **based on textual content**, such as a button’s label or an anchor’s text.
+     * Generates an ID based on textual content, such as a button’s label or an anchor’s text.
      *
      * Example:
      *   <button>Submit</button>   → `BUTTON__submit__a1b2c3d4-...`
@@ -184,34 +184,31 @@ export class WidgetIDGenerator {
      *
      * This method walks the entire subtree under `widget` to collect all `TmplAstText` nodes,
      * picks the single longest text, normalizes it (removes punctuation, replaces spaces, lowercases),
-     * and then appends a UUID.
+     * and then appends a short UUID (8 hex characters).
      *
      * @param widget - The TmplAstElement to inspect.
-     * @returns      - A text-based ID or `null` if no meaningful text found.
+     * @returns      - A text-based ID or `undefined` if no meaningful text found.
      */
-    private _generateDefaultID(widget: TmplAstElement): string | null {
+    private _tryText(widget: TmplAstElement): string | undefined {
         // 1) Recursively collect all TmplAstText node values
-        const allTexts: string[] = [];
-        this._collectAllText(widget, allTexts);
+        const texts: string[] = [];
+        this._collectTexts(widget, texts);
 
         // 2) Pick the longest text (if any)
-        let longestText = "";
-        for (const txt of allTexts) {
-            const trimmed = txt.trim();
-            if (trimmed.length > longestText.length)
-                longestText = trimmed;
-        }
+        const longest = texts
+            .map(t => t.trim())
+            .sort((a, b) => b.length - a.length)[0] || '';
 
-        if (longestText) {
-            // Replace any sequence of non-alphanumeric characters with underscore, then lowercase.
-            const sanitized = longestText
-                .replace(/[^A-Za-z0-9]+/g, "_")
-                .replace(/^_+|_+$/g, "")  // remove leading/trailing underscores
-                .toLowerCase();
-            return this._composeWithUuid(widget.name, sanitized);
-        }
+        if (!longest)
+            return undefined;
 
-        return null;
+        // Replace any sequence of non-alphanumeric characters with underscore, then lowercase.
+        const sanitized = longest
+            .replace(/[^A-Za-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "")  // remove leading/trailing underscores
+            .toLowerCase();
+
+        return this._composeWithShortUuid(widget.name, sanitized);
     }
 
     /**
@@ -221,7 +218,7 @@ export class WidgetIDGenerator {
      * @param node     - The current AST node to inspect.
      * @param outTexts - An array to accumulate all text strings found.
      */
-    private _collectAllText(node: TmplAstNode, outTexts: string[]): void {
+    private _collectTexts(node: TmplAstNode, outTexts: string[]): void {
         if (node instanceof TmplAstText)
             outTexts.push(node.value);
 
@@ -229,43 +226,31 @@ export class WidgetIDGenerator {
         // Here we rely on the fact that TmplAstElement has a `.children` array
         if (node instanceof TmplAstElement)
             for (const child of node.children)
-                this._collectAllText(child, outTexts);
-
-        // Note: if we later introduce other node types with text children,
-        // extend this method to dive into those as well.
+                this._collectTexts(child, outTexts);
     }
 
     /**
-     * Generates a **fallback symbolic ID** when no contextual/binding/text information is available.
+     * Generates a fallback symbolic base ID when no contextual/binding/text information is available.
+     * 
+     * Returns only the widget tag name
      *
-     * Example (counter starts at 1 for each tag):
-     *   <button>    →  `BUTTON__1__c1a2b3d4-...`
-     *   <input>     →  `INPUT__2__d4e5f6a7-...`
-     *
-     * Automatically appends a UUID v4 to ensure global uniqueness.
-     *
-     * @param widget - The TmplAstElement to generate a fallback ID for.
-     * @returns      - A symbolic ID: `<TAG>__<count>__<UUID>`.
+     * @param tag - The tag of the TmplAstElement to generate a fallback ID for.
+     * @returns   - The tag of the element as a fallback symbolic ID
      */
-    private _generateSymbolicID(widget: TmplAstElement): string {
-        const tag = widget.name.toUpperCase();
-        const previous = this.occurrences.get(tag) || 0;
-        const current = previous + 1;
-        this.occurrences.set(tag, current);
-
-        // Always append UUID for guaranteed uniqueness
-        return this._composeWithUuid(tag, current.toString());
+    private _symbolicBase(tag: string): string {
+        return tag;
     }
 
     /**
-     * Helper to build an ID string of the form `<TAG>__<base>__<UUID>`.
+     * Helper to compose `<TAG>__<base>__<shortUuid>` using the first 8 hex digits of a v4.
      *
      * @param tag  - Tag name (e.g., 'BUTTON', 'INPUT', 'FORM').
      * @param base - Contextual/textual piece (already sanitized) or a numeric count as string.
-     * @returns    - A string `<TAG>__<base>__<UUID>`.
+     * @returns    - A string `<TAG>__<base>__<shortUuid>`
      */
-    private _composeWithUuid(tag: string, base: string): string {
-        const uuid = uuidv4();
-        return `${tag}${this.ID_SEPARATOR}${base}${this.ID_SEPARATOR}${uuid}`;
+    private _composeWithShortUuid(tag: string, base: string): string {
+        // Grab only the first 8 hex digits of a v4
+        const shortId = uuidv4().replace(/-/g, "").slice(0, 8);
+        return `${tag}${this.ID_SEPARATOR}${base}${this.ID_SEPARATOR}${shortId}`;
     }
 }

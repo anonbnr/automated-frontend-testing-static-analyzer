@@ -1,76 +1,63 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// widget-info.ts
+// models/widget-info.ts
 //
-// Contains all the “widget-centric” types:
-//   - UserEventType / NavEventType (allowed event names)
+// Contains metadata types for UI widgets extracted from Angular templates:
 //   - WidgetInfo (static info about a UI widget)
-//   - EventHandlerCallContext (one function-call inside a handler)
-//   - EventContext (lists a widget’s event, handler, and the calls it makes)
-//   - WidgetEventMap (maps widgetID ⇒ array of EventContext)
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { TmplAstNode } from "@angular/compiler";
 import { NavEventType, UserEventType } from "./event-info.js";
 
 /**
- * Represents information about a UI widget (a DOM element or interactible third-party library UI component).
+ * Represents a UI widget (a DOM element or third-party component)
+ * in an Angular template, along with its associated metadata.
  */
-export type WidgetInfo = {
+export interface WidgetInfo {
     /**
-     * Unique identifier for the widget (e.g. 'save-button', 'userInput').
-     * This ID must be distinct across the entire application.
+     * Globally unique identifier for this widget (e.g. 'save-button').
+     * This ID must be unique across the entire application.
      */
     id: string;
 
     /**
-     * Type of the widget (e.g. 'input', 'button', 'form', 'select').
+     * The widget’s element type or tag (e.g. 'input', 'button', 'form').
      */
     type: string;
 
     /**
-     * A map of eventName → handlerFunctionName.
-     * eventName keys come from `UserEventType` or `NavEventType`.
-     * handler values are the component’s method names (e.g., 'onSavePost').
+     * Map of event name → handler method name.
+     * Event names come from `UserEventType` or `NavEventType`.
      */
-    events: { [K in UserEventType | NavEventType]?: string };
+    events: Record<UserEventType | NavEventType, string | undefined>;
 
     /**
-     * Optional HTML or Angular directive attributes associated with the widget.
-     * For example: { placeholder: 'Enter name', value: 'John Doe' }.
+     * Raw HTML attributes or Angular directive inputs on this widget.
+     * For example: `{ placeholder: 'Enter name', value: 'John' }`.
      */
-    attributes?: {
-        [key: string]: any; // allows any attribute → any value
-    };
+    attributes?: Record<string, any>;
 
     /**
-     * Validation rules (just the rule names, e.g. 'required', 'pattern', 'maxLength').
-     * These correlate to Angular form validations or HTML validation constraints.
+     * Names of validation rules applied to this widget
+     * (e.g. ['required', 'minLength']).
      */
     validationRules?: string[];
 
     /**
-     * If true, this widget triggers form submission (e.g. <button type="submit">).
-     * Otherwise, it’s a non-submitting control.
+     * True if this widget causes form submission
+     * (e.g. `<button type="submit">`).
      */
     triggersFormSubmission?: boolean;
 
     /**
-     * Child widgets nested within this widget’s element.
-     *
-     * Each entry is a `WidgetInfo` for a widget found inside this one’s
-     * template subtree. Used in the three-phase scan to build a hierarchy:
-     *   - Level-1 containers (forms, anchors) → children → Level-2 controls → …
-     *
-     * If no nested widgets were found, this may be `[]` or omitted.
+     * Child widgets nested within this widget’s template subtree.
+     * Used to build a hierarchy when scanning Angular templates.
      */
     children?: WidgetInfo[];
 
     /**
      * The original Angular AST node (`TmplAstElement` or `TmplAstTemplate`)
      * from which this widget was created.
-     *
-     * Useful for any advanced analyses that need to inspect the node’s
-     * full attribute list, structural directives, or sourceSpan.
+     * Useful for deeper analyses that require sourceSpan or directive details.
      */
     originalNode?: TmplAstNode,
 }

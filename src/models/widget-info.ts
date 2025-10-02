@@ -61,3 +61,5 @@ export interface WidgetInfo {
      */
     originalNode?: TmplAstNode,
 }
+
+export type WidgetPathInfo = { componentId: string; widgetPath: string[] };

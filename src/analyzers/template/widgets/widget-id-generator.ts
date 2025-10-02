@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// analyzers/template/widgets/widget-id-generator.ts
+// src/analyzers/template/widgets/widget-id-generator.ts
 //
 // Generates unique, concise IDs for interactive widgets in Angular templates.
 //   - Contextual IDs from key attributes (name, formControlName, value, placeholder)
@@ -105,6 +105,9 @@ export class WidgetIDGenerator {
             base = this._symbolicBase(tag);
             logger.log('trace', '[WidgetIDGenerator] Symbolic fallback base "%s" for %s', base, tag);
         }
+
+        // clean up base
+        base = base.replaceAll('/', '_');
 
         // De-duplicate base within this template
         const count = (this.occurrences.get(base) || 0) + 1;

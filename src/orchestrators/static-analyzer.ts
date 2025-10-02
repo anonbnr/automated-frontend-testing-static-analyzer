@@ -29,6 +29,7 @@ import { ComponentRegistry } from "../models/component-info.js";
 import { ModuleRegistry } from "../models/module-info.js";
 import { AppNavigation } from "../models/navigation-graph.js";
 import { ComponentRouteMap } from "../models/route-info.js";
+import { AnalyzerConfig, DEFAULT_ANALYZER_CONFIG } from "../models/analyzer-config.js";
 
 /**
  * StaticAnalyzer
@@ -48,21 +49,22 @@ import { ComponentRouteMap } from "../models/route-info.js";
  * ```
  */
 export class StaticAnalyzer {
-    private project: Project;
-    private compRegistry!: ComponentRegistry;
-    private modRegistry!: ModuleRegistry;
-    private compRouteMap!: ComponentRouteMap;
-    private routeAnalyzer: RouteAnalyzer;
-    private logicAnalyzer: LogicAnalyzer = new LogicAnalyzer();
-    private graphBuilder: NavigationGraphBuilder = new NavigationGraphBuilder();
+    private _project: Project;
+    private cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG
+    private _compRegistry!: ComponentRegistry;
+    private _modRegistry!: ModuleRegistry;
+    private _compRouteMap!: ComponentRouteMap;
+    private _routeAnalyzer: RouteAnalyzer;
+    private _logicAnalyzer: LogicAnalyzer = new LogicAnalyzer(this.cfg);
+    private _graphBuilder: NavigationGraphBuilder = new NavigationGraphBuilder(this.cfg);
 
     /**
      * @param tsConfigPath
      *   Absolute path to the Angular project's `tsconfig.json`.
      */
     constructor(tsConfigPath: string) {
-        this.project = new Project({ tsConfigFilePath: tsConfigPath });
-        this.routeAnalyzer = new RouteAnalyzer(this.project);
+        this._project = new Project({ tsConfigFilePath: tsConfigPath });
+        this._routeAnalyzer = new RouteAnalyzer(this._project);
     }
 
     /**
@@ -79,26 +81,42 @@ export class StaticAnalyzer {
      */
     async analyze(): Promise<AppNavigation> {
         // ── PHASE 1: MODULE DISCOVERY ────────────────────────────────
-        const modBuilder = new ModuleRegistryBuilder(this.project);
+        const modBuilder = new ModuleRegistryBuilder(this._project);
         await modBuilder.discoverModules();
 
         // ── PHASE 2: COMPONENT DISCOVERY ─────────────────────────────────────────────
         // Extracts every @Component, loads its template, parses widgets & nested selectors.
-        this.compRegistry = await new ComponentRegistryBuilder(this.project).buildComponentsRegistry();
+        this._compRegistry = await new ComponentRegistryBuilder(this._project).buildComponentsRegistry();
 
         // ── PHASE 3: ROUTE ANALYSIS & MODULE ASSIGNMENT ─────────
-        this.compRouteMap = await this.routeAnalyzer.analyzeProject(this.compRegistry);
-        modBuilder.assignRoutesToModules(this.compRouteMap);
-        this.modRegistry = modBuilder.registry;
+        this._compRouteMap = await this._routeAnalyzer.analyzeProject(this._compRegistry);
+        modBuilder.assignRoutesToModules(this._compRouteMap);
+        this._modRegistry = modBuilder.registry;
 
         // ── PHASE 4: STATIC GRAPH CONSTRUCTION ──────────────────
-        this.graphBuilder.buildStatic(this.compRouteMap, this.modRegistry, this.compRegistry);
+        this._graphBuilder.buildStatic(this._compRouteMap, this._modRegistry, this._compRegistry);
 
         // ── PHASE 5: DYNAMIC GRAPH CONSTRUCTION ─────────────────
-        const widgetEventMaps = this.logicAnalyzer.analyzeProject(this.project, this.compRegistry, this.compRouteMap.routeMap);
-        this.graphBuilder.buildDynamic(this.compRouteMap, this.modRegistry, widgetEventMaps);
+        const widgetEventMaps = this._logicAnalyzer.analyzeProject(this._project, this._compRegistry, this._compRouteMap.routeMap);
+        this._graphBuilder.buildDynamic(this._compRouteMap, this._modRegistry, widgetEventMaps);
 
         // ── DONE ────────────────────────────────────────────────
-        return this.graphBuilder.getGraph();
+        return this._graphBuilder.getGraph();
+    }
+
+    get project(): Project {
+        return this._project;
+    }
+
+    get compRegistry(): ComponentRegistry {
+        return this._compRegistry;
+    }
+
+    get modRegistry(): ModuleRegistry {
+        return this._modRegistry;
+    }
+
+    get compRouteMap(): ComponentRouteMap {
+        return this._compRouteMap;
     }
 }

@@ -23,6 +23,7 @@ import { WidgetInfo } from '../../models/widget-info.js';
 import { AstUtils } from '../../parsers/ast-utils.js';
 import { TemplateUtils } from '../template/template-utils.js';
 import { LogicUtils } from './logic-utils.js';
+import { AnalyzerConfig, DEFAULT_ANALYZER_CONFIG } from '../../models/analyzer-config.js';
 
 /**
  * Orchestrates business-logic analysis of Angular components.
@@ -36,6 +37,8 @@ import { LogicUtils } from './logic-utils.js';
  * graph builders will consume to wire up dynamic transitions.
  */
 export class LogicAnalyzer {
+    constructor(private cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG) { }
+
     // ────────────────────────────────────────────────────────────────────────────
     // 1) PROJECT-WIDE ANALYSIS
     // ────────────────────────────────────────────────────────────────────────────
@@ -199,7 +202,7 @@ export class LogicAnalyzer {
     ): WidgetEventMap | undefined {
         // 1) Build EventContext objects for each declared event
         const eventContexts = Object.entries(widget.events)
-            .map(([event, handler]) => LogicUtils.buildEventContext(event, handler!, methods, routeMap))
+            .map(([event, handler]) => LogicUtils.buildEventContext(event, handler!, methods, routeMap, this.cfg))
             .filter((ctx): ctx is EventContext => Boolean(ctx));
 
         // 2) Attach any matching validation rules back onto the widget

@@ -19,8 +19,9 @@
 //                                       attachValidationRules)
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { ArrayLiteralExpression, CallExpression, ClassDeclaration, ConstructorDeclaration, MethodDeclaration, ObjectLiteralExpression, PropertyAccessExpression, SyntaxKind } from "ts-morph";
+import { ArrayLiteralExpression, CallExpression, ClassDeclaration, ConstructorDeclaration, ElementAccessExpression, MethodDeclaration, ObjectLiteralExpression, PropertyAccessExpression, SyntaxKind } from "ts-morph";
 import logger from "../../logging/logger.js";
+import { AnalyzerConfig, DEFAULT_ANALYZER_CONFIG } from "../../models/analyzer-config.js";
 import { EventContext, EventHandlerCallContext, NavEventType, UserEventType } from "../../models/event-info.js";
 import { RouteMap } from "../../models/route-info.js";
 import { WidgetInfo } from "../../models/widget-info.js";
@@ -52,29 +53,35 @@ export class LogicUtils {
         event: UserEventType | NavEventType,
         handlerExpr: string,
         methods: Map<string, MethodDeclaration>,
-        routeMap: RouteMap
+        routeMap: RouteMap,
+        cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG
     ): EventContext | undefined {
+        // 0) normalize event:
+        const normalizedEvent = (event === 'ngSubmit' ? 'submit' : event);
+
         logger.log(
             'trace',
-            '[LogicUtils] buildEventContext(event=%s, handler="%s")',
+            '[LogicUtils] buildEventContext(event=%s, normalized=%s, handler="%s")',
             event,
+            normalizedEvent,
             handlerExpr
         );
+
         // 1) literal href / routerLink / static-redirect
-        if (event === 'href' || event === 'routerLink' || event === 'static-redirect') {
+        if (normalizedEvent === 'href' || normalizedEvent === 'routerLink' || normalizedEvent === 'static-redirect') {
             logger.debug(
                 '[LogicUtils] [%s] treating "%s" as literal navigation',
-                event,
+                normalizedEvent,
                 handlerExpr
             );
-            return this.navEventContext(event, handlerExpr);
+            return this.navEventContext(normalizedEvent, handlerExpr);
         }
 
         // 2) explicit fnName('someFragment') patterns
         const fnCall = this.parseFunctionCall(handlerExpr);
         if (fnCall) {
             logger.log('trace', '[LogicUtils] parseFunctionCall → %o', fnCall);
-            const navCtx = this.fragmentNavigationContext(event, fnCall.name, fnCall.arg, routeMap);
+            const navCtx = this.fragmentNavigationContext(normalizedEvent, fnCall.name, fnCall.arg, routeMap, cfg);
             if (navCtx) {
                 logger.debug(
                     '[LogicUtils] fragmentNavigationContext → %o',
@@ -92,19 +99,19 @@ export class LogicUtils {
                 '[LogicUtils] Found method "%s", extracting calls…',
                 methodName
             );
-            const calls = this.collectEventHandlerCalls(methodDecl);
+            const calls = this.collectEventHandlerCalls(methodDecl, cfg);
             logger.log(
                 'trace',
                 '[LogicUtils] collectEventHandlerCalls → %o',
                 calls
             );
-            return { event, handler: methodName, callContexts: calls };
+            return { event: normalizedEvent, handler: methodName, callContexts: calls };
         }
 
         logger.warn(
             '[LogicUtils] No handler found for "%s" on event "%s"',
             handlerExpr,
-            event
+            normalizedEvent
         );
 
         return undefined;
@@ -119,7 +126,7 @@ export class LogicUtils {
     static parseFunctionCall(expr: string): { name: string; arg: string } | undefined {
         // Handles both fn('foo') and fn(bar) 
         logger.log('trace', '[LogicUtils] parseFunctionCall("%s")', expr);
-        const m = expr.match(/^(\w+)\(\s*(?:['"]?([^'")]+)['"]?)\s*\)$/);
+        const m = expr.match(/^([A-Za-z_$][\w$]*)\(\s*(?:['"]?([^'")]+)['"]?)\s*\)$/);
         return m ? { name: m[1], arg: m[2] } : undefined;
     }
 
@@ -166,7 +173,8 @@ export class LogicUtils {
         event: UserEventType,
         fnName: string,
         fragment: string,
-        routeMap: RouteMap
+        routeMap: RouteMap,
+        _cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG
     ): EventContext | undefined {
         logger.log(
             'trace',
@@ -245,7 +253,10 @@ export class LogicUtils {
      *   A deduped array of `EventHandlerCallContext`, each matching:
      *     { caller: string; called: string; data: string[] }
      */
-    static collectEventHandlerCalls(handler: MethodDeclaration): EventHandlerCallContext[] {
+    static collectEventHandlerCalls(
+        handler: MethodDeclaration,
+        cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG
+    ): EventHandlerCallContext[] {
         logger.log(
             'trace',
             '[LogicUtils] collectEventHandlerCalls(%s)',
@@ -270,6 +281,14 @@ export class LogicUtils {
                 caller = pae.getExpression().getText(); // e.g. "this.router" or "this.userService"
                 methodName = pae.getName(); // e.g. "navigate" or "saveUser"
             }
+            else if (expr.isKind(SyntaxKind.ElementAccessExpression)) {
+                const eae = expr as ElementAccessExpression;
+                caller = eae.getExpression().getText();
+                const arg = eae.getArgumentExpression()?.getText() ?? '';
+                methodName = arg.replace(/['"`]/g, '');     // e.g. "_destroyOverlay"
+                if (methodName.startsWith('_')) continue;   // private → drop
+            }
+
             else {
                 // fallback: identifier or something else
                 caller = expr.getText(); // e.g. "someGlobalFn"
@@ -278,23 +297,30 @@ export class LogicUtils {
 
             let called = methodName;
             let data: string[] = [];
+            let isBackend = false;
 
-            // 2) Special-case router.navigate([...])
-            if (this.isRouterNavigateCall(expr.getText())) {
-                // resolveRouterNavigate now returns { segments } only,
-                // and we leave `called` as "navigate"
+            // 2) Special-case router navigation
+            const isNav = this.isRouterNavigateCall(expr.getText());
+            if (isNav) {
                 const { segments } = this.resolveRouterNavigate(callExpr);
                 data = segments;
             }
 
-            // 3) Service calls (anythingService.foo())
-            else if (this.isServiceCall(caller)) {
-                // keep called = methodName so we know which service method invoked it,
-                // but add "/backend" to data to drive a virtual-route in the graph later
-                data = ['/backend'];
+            // 3) Service/Http calls → mark as backend
+            else if (this.isBackendServiceCaller(caller, cfg)) {
+                isBackend = true;
+                // canonical backend sentinel + helpful labels
+                const raw = caller.replace(/^this\./, '').split('.')[0]; // e.g. "userService"
+                const service = cfg.backend.normalizeServiceName(raw);
+                data = ['/backend', service, methodName];
+
+                logger.debug('[LogicUtils] backend call detected → %s.%s', caller, methodName);
             }
 
-            // 4) Build the unique key & dedupe
+            // 4) Filter noisy non-domain related calls
+            if (this.isNoiseCall(caller, methodName, isBackend, isNav, cfg)) continue; // drop Rx/logging/etc.
+
+            // 5) Build the unique key & dedupe
             const key = `${caller}.${methodName}|${data.join(",")}`;
             if (!uniqueCalls.has(key)) {
                 uniqueCalls.set(key, { caller, called, data });
@@ -326,7 +352,7 @@ export class LogicUtils {
             '[LogicUtils] isRouterNavigateCall("%s")',
             callerText
         );
-        return /\.\s*navigate\s*/.test(callerText);
+        return /\.\s*navigate(?:ByUrl)?\s*(?:\(|$)/.test(callerText);
     }
 
     /**
@@ -342,23 +368,40 @@ export class LogicUtils {
     static resolveRouterNavigate(callExpr: CallExpression): { segments: string[] } {
         logger.log('trace', '[LogicUtils] resolveRouterNavigate()');
         const args = callExpr.getArguments();
-        if (args.length !== 1 || !args[0].isKind(SyntaxKind.ArrayLiteralExpression)) {
-            logger.log('trace', '[LogicUtils] Not an array-literal navigate call');
-            return { segments: [] };
+
+        if (!args.length) return { segments: [] };
+
+        const first = args[0];
+
+        // Case A: navigateByUrl(createUrlTree([...]))
+        if (first.isKind(SyntaxKind.CallExpression) &&
+            /createUrlTree/.test(first.getExpression().getText())) {
+            const arg0 = first.getArguments()[0];
+            if (arg0?.isKind(SyntaxKind.ArrayLiteralExpression)) {
+                const segs = arg0.getElements()
+                    .map(e => e.getText().replace(/['"`]/g, "").replace(/^\/+/, ""))
+                    .filter(Boolean);
+                logger.debug('[LogicUtils] resolveRouterNavigate (UrlTree) → %o', segs);
+                return { segments: segs };
+
+            }
         }
 
-        const arrayLit = args[0] as ArrayLiteralExpression;
-        const segments = arrayLit
-            .getElements()
-            .map(e =>
-                e
-                    .getText()
-                    .replace(/['"`]/g, "") // ← strip any quotes
-                    .replace(/^\/+/, "") // ← strip any leading slash
-            )
-            .filter(s => s.length > 0);
+        // Case B: navigate([...])
+        if (first.isKind(SyntaxKind.ArrayLiteralExpression)) {
+            const arrayLit = first as ArrayLiteralExpression;
+            const segments = arrayLit
+                .getElements()
+                .map(e => e.getText().replace(/['"`]/g, "").replace(/^\/+/, ""))
+                .filter(s => s.length > 0);
+            logger.debug('[LogicUtils] resolveRouterNavigate (array) → %o', segments);
+            return { segments };
+        }
 
-        logger.debug('[LogicUtils] resolveRouterNavigate → %o', segments);
+        // Case C: navigateByUrl('/a/b') OR navigate('/a/b') as string
+        const asText = first.getText().replace(/[`'"]/g, "").replace(/^\/+/, "");
+        const segments = asText.split('/').filter(Boolean);
+        logger.debug('[LogicUtils] resolveRouterNavigate (string) → %o', segments);
         return { segments };
     }
 
@@ -369,13 +412,25 @@ export class LogicUtils {
      * @param callerText  The expression text of the call (e.g. `"this.userService.saveUser"`).
      * @returns           `true` if it appears to call a `*Service` method; otherwise `false`.
      */
-    static isServiceCall(callerText: string): boolean {
-        logger.log(
-            'trace',
-            '[LogicUtils] isServiceCall("%s")',
-            callerText
-        );
-        return /\bthis\.[A-Za-z]+Service\./i.test(callerText);
+    static isBackendServiceCaller(callerText: string, cfg: AnalyzerConfig): boolean {
+        // Must be a root like "this.userService" or "this.http" – not a CallExpression result
+        if (/\(/.test(callerText)) return false; // exclude call-results: "...addPost(...)"
+        return cfg.backend.serviceCallerRe.test(callerText);
+    }
+
+    static isNoiseCall(caller: string, methodName: string, isBackend: boolean, isNav: boolean, cfg: AnalyzerConfig): boolean {
+        // 1) Noise method-names take precedence
+        if (cfg.noise.methodNames.has(methodName)) return true;
+
+        // 2) Otherwise keep nav/backend
+        if (isBackend || isNav) return false;
+
+        // 3) Logging
+        if (/^console$/.test(caller) && methodName === 'log') return true;
+
+        // 4) Noisy functions
+        if (!caller.includes('.') && cfg.noise.freeFunctions.has(methodName)) return true;
+        return false;
     }
 
     // ────────────────────────────────────────────────────────────────────────────

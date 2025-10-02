@@ -24,8 +24,10 @@ export type UserEventType
 /**
  * Names of navigation-style events, used for routing or redirection.
  * - `'routerLink'`       → Angular `<a [routerLink]="...">`  
+ * - `'navigate'`         → programmatic navigation calls (e.g., navigate(), navigateByUrl(), etc.)`  
  * - `'href'`             → plain anchor link  
  * - `'static-redirect'`  → route file configured redirect  
+ * - `'service-call'`     → programmatic service calls  
  */
 export type NavEventType
     = 'routerLink'

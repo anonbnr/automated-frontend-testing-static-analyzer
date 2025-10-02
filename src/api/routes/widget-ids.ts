@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// api/routes/widget-id.ts
+// api/routes/widget-ids.ts
 //
 // Generates and returns the unique widget IDs for a given component.
-//   - POST /widget-id
+//   - POST /widget-ids
 //     - Validates `projectRoot` and `selector` params
 //     - Ensures `tsconfig.json` exists
 //     - Builds the ComponentRegistry
@@ -31,7 +31,7 @@ function collectIds(widgets: any[]): string[] {
 }
 
 /**
- * POST /widget-id
+ * POST /widget-ids
  *
  * Returns all widget IDs for a given component.
  *
@@ -59,9 +59,9 @@ router.post('/', async (req: Request, res: Response) => {
         selector?: string;
     };
 
-    logger.debug('[POST /widget-id] projectRoot=%o, selector=%o', projectRoot, selector);
+    logger.debug('[POST /widget-ids] projectRoot=%o, selector=%o', projectRoot, selector);
     if (!projectRoot || !selector) {
-        logger.warn('[POST /widget-id] Bad Request – missing projectRoot or selector');
+        logger.warn('[POST /widget-ids] Bad Request – missing projectRoot or selector');
         return res
             .status(400)
             .json({ success: false, error: 'projectRoot and selector are required' });
@@ -69,7 +69,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const tsConfig = resolveTsConfig(projectRoot);
     if (!tsConfig) {
-        logger.warn('[POST /widget-id] Bad Request – tsconfig.json not found under %s', projectRoot);
+        logger.warn('[POST /widget-ids] Bad Request – tsconfig.json not found under %s', projectRoot);
         return res
             .status(400)
             .json({ success: false, error: 'tsconfig.json not found in projectRoot' });
@@ -77,31 +77,31 @@ router.post('/', async (req: Request, res: Response) => {
 
     
     try {
-        logger.info("[POST /widget-id] Initializing ts-morph project from %s", tsConfig);
+        logger.info("[POST /widget-ids] Initializing ts-morph project from %s", tsConfig);
         const project = new Project({ tsConfigFilePath: tsConfig });
         
-        logger.info('[POST /widget-id] Building component registry…');
+        logger.info('[POST /widget-ids] Building component registry…');
         const registry: ComponentRegistry =
             await new ComponentRegistryBuilder(project).buildComponentsRegistry();
-        logger.info('[POST /widget-id] Registry has %d components', registry.components.length);
+        logger.info('[POST /widget-ids] Registry has %d components', registry.components.length);
 
         const comp = registry.getBySelector(selector);
         if (!comp) {
-            logger.warn('[POST /widget-id] Component "%s" not found', selector);
+            logger.warn('[POST /widget-ids] Component "%s" not found', selector);
             return res
                 .status(404)
                 .json({ success: false, error: `Component "${selector}" not found` });
         }
 
-        logger.info('[POST /widget-id] Found component "%s"', selector);
+        logger.info('[POST /widget-ids] Found component "%s"', selector);
 
         // Flatten widget tree and collect IDs
         const widgetIDs = collectIds(comp.widgets);
-        logger.info('[POST /widget-id] Returning %d widget IDs for "%s"', widgetIDs.length, selector);
+        logger.info('[POST /widget-ids] Returning %d widget IDs for "%s"', widgetIDs.length, selector);
 
         return res.json({ success: true, widgetIDs });
     } catch (err: any) {
-        logger.error('[POST /widget-id] Error: %o', err);
+        logger.error('[POST /widget-ids] Error: %o', err);
         return res
             .status(500)
             .json({ success: false, error: err.message || 'Failed to generate widget IDs' });

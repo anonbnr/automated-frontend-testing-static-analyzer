@@ -1,61 +1,67 @@
-# Automated Frontend Testing Static Analyzer
-A core part of our **Frontend Automation Framework**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph**. The graph models:
+# Static Analyzer for Automated Functional Testing of Frontend Web Applications
+A core part of our **Automation Framework for Functional Testing**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph** and derive **user-journey scenarios**.
 
-- **Routes** & **redirects**  
+- **Routes** & redirects  
 - **NgModules** & component declarations  
 - **Components** & their nested child selectors  
-- **Interactive widgets** (buttons, forms, links, Material controls)  
+- **Interactive widgets** (buttons, forms, inputs, anchors, Material controls)  
 - **Event bindings** → handler call graphs (`router.navigate`, service calls, custom logic)  
 - **Form validation rules** & **submission triggers**  
-
-This graph can drive automated test‐scenario generation, regression testing, coverage analysis, and more.
+- **Scenarios** (module/route/component/widget/interaction → terminal outcomes)
 
 ---
 
 ## 🚀 Features
-1. **Module Discovery**  
-   - Scans all `@NgModule` classes in your workspace  
-   - Classifies each module as **root**, **routing**, **external**, **global**, or **shared**  
-2. **Component & Template Analysis**  
-   - Finds every `@Component`, loads its inline or external template  
-   - Parses the template AST to extract:
-     - Component selector & class name  
+1) **Module Discovery**  
+   - Scans all `@NgModule` classes and tags lazy modules.
+   - Classifies modules as **root**, **routing**, **external**, **global**, or **shared**.
+2) **Component & Template Analysis**  
+   - Finds every `@Component`, loads its template (inline or external), and extracts:
+     - Selector & class name  
      - Nested `<app-*>` child components  
      - Interactive widgets (forms, inputs, buttons, anchors, Material, etc.)  
-     - Stable, descriptive widget IDs  
+     - **Stable widget IDs** (contextual, short 8-hex suffix; `/` sanitized)  
      - Widget attributes, event handlers, validation rules, submission flags  
-3. **Route Analysis**  
-   - Gathers all Angular routes via `Routes[]` and `RouterModule.forRoot/forChild`  
-   - Supports eager components, lazy modules (`loadChildren`), standalone components (`loadComponent`)  
-   - Normalizes & de-dupes paths, handles redirects  
-   - Classifies component usage roles:  
-     - **root** (`<app-root>`)  
-     - **global** (present on *every* route)  
-     - **shared** (on multiple but not all routes)  
-     - **mapped** (tied to exactly one route)  
-     - **dead** (never used)  
-4. **Business-Logic Analysis**  
-   - Uses **ts-morph** to inspect each component’s TypeScript AST  
-   - Maps each widget event (`click`, `submit`, `[routerLink]`, `href`, custom) to:
-     - Event handler methods  
-     - `router.navigate([...])` calls (route segments)  
-     - Service calls (`this.myService.*`) marked as backend interactions  
-     - Inline fragment navigations  
-   - Extracts form-control validators (`Validators.*`) and applies them back to widgets  
-5. **Navigation Graph Builder**  
+     - **Effective widget type** (e.g., `<input type="email">` → `email`)  
+3) **Route Analysis**  
+   - Gathers routes from `Routes[]`, `RouterModule.forRoot/forChild`, `loadChildren`, and `loadComponent`.  
+   - Normalizes & de-dupes paths; handles redirects; classifies component roles:
+     - **root**, **global**, **shared**, **mapped**, **dead**
+4) **Business-Logic Analysis**  
+   - Uses **ts-morph** to inspect component ASTs.  
+   - Maps each widget event (`click`, `submit`, `routerLink`, `href`, `navigate*`, custom) to:
+     - Handler methods & call sites  
+     - `router.navigate*` targets (arrays, UrlTree, or string paths)  
+     - **Service/HTTP calls** (marked as backend interactions)  
+   - Extracts form-control validators (`Validators.*`) and applies back to widgets.  
+   - **Noise filtering** (Rx plumbing, logging, etc.) and configurable backend heuristics.
+5) **Navigation Graph Builder**  
    - Builds a **multigraph** (`AppNavigation`) with:
-     - **Static edges** (`contains`, `imports`, `declares`) for modules→routes→components→widgets  
-     - **Dynamic transitions** (`click`, `routerLink`, `navigate`, `lazy-load`, `static-redirect`)  
-   - Exports the graph as JSON for downstream tools  
-6. **Express-based REST API**  
-   - **POST** `/modules`           → all NgModule metadata  
+     - **Static edges** (`contains`, `imports`, `declares`)  
+     - **Dynamic transitions** (`click`, `routerLink`, `navigate*`, `href`, `lazy-load`, `static-redirect`, `service-call`)  
+   - **Nodes**: `module`, `route`, `component`, `widget`, `backend`, `external-route`, `virtual-route`  
+   - **Route node attributes**: `pathMatch`, `canActivate`, `canActivateChild`, `canLoad`, `resolve`, `data`  
+   - **Widget node attributes**: `attributes`, `events`, `widgetType`, `validationRules`, `triggersFormSubmission`  
+   - **Form submission modeling**: submit-trigger widget → `submit` → nearest ancestor `<form>`.  
+   - **Canonicalization** of navigation targets to known routes when possible.
+6) **Scenario Extraction**  
+   - Derives user-journey **scenarios** from the graph:
+     - Route-scoped & global header paths  
+     - One scenario per terminal outcome: `route` | `external-route` | `backend` | `virtual-route`  
+     - **Fanout** options: keep siblings (primary) or **collapse** backend tails  
+     - `intent` (human label) derived from route titles/paths; `success` computed from error sentinels  
+   - Validates that scenario node IDs align with the graph.
+7) **Express-based REST API**  
+   - **POST** `/modules`           → all NgModule metadata (with lazy flags)  
    - **POST** `/components`        → all ComponentInfo (selectors, widgets, nested selectors)  
    - **POST** `/routes`            → routes, redirects, component roles  
    - **POST** `/template`          → single ComponentInfo by selector  
    - **POST** `/widgets`           → widget tree for one component  
-   - **POST** `/widget-id`         → flattened widget IDs for one component  
+   - **POST** `/widget-ids`        → flattened widget IDs for one component
    - **POST** `/business-logic`    → widget→event call graphs  
    - **POST** `/graph`             → full `AppNavigation` multigraph  
+   - **POST** `/scenarios`         → user-journey scenarios
+   - **GET**  `/healthz`           → health check
 
 ---
 
@@ -64,17 +70,18 @@ This graph can drive automated test‐scenario generation, regression testing, c
 automated-frontend-testing-static-analyzer/
 ├── src/
 │   ├── api/
-│   │   ├── middleware.ts           # CORS, JSON body parser, error handler
+│   │   ├── middleware.ts                # CORS, JSON body parser, error handler
 │   │   ├── routes/
-│   │   │   ├── modules.ts
-│   │   │   ├── components.ts
-│   │   │   ├── routes.ts
-│   │   │   ├── template.ts
-│   │   │   ├── widgets.ts
-│   │   │   ├── widget-id.ts
 │   │   │   ├── business-logic.ts
-│   │   │   └── graph.ts
-│   │   └── index.ts               # Express app entry point
+│   │   │   ├── components.ts
+│   │   │   ├── graph.ts
+│   │   │   ├── modules.ts
+│   │   │   ├── routes.ts
+│   │   │   ├── scenarios.ts             
+│   │   │   ├── template.ts
+│   │   │   ├── widget-ids.ts            
+│   │   │   └── widgets.ts
+│   │   └── index.ts                     # Express app entry + /healthz
 │   ├── analyzers/
 │   │   ├── business-logic/
 │   │   │   ├── logic-analyzer.ts
@@ -87,25 +94,41 @@ automated-frontend-testing-static-analyzer/
 │   │       ├── template-utils.ts
 │   │       └── widgets/
 │   │           ├── widget-id-generator.ts
-│   │           └── widget-processor.ts
+│   │           ├── widget-processor.ts
+│   │           └── widget-utils.ts       
 │   ├── builders/
 │   │   ├── component-registry-builder.ts
 │   │   ├── module-registry-builder.ts
-│   │   └── navigation-graph-builder.ts
+│   │   ├── navigation-graph-builder.ts
+│   │   └── scenarios/                    
+│   │       ├── graph-helpers.ts
+│   │       ├── intent-labels.ts
+│   │       ├── intent-resolver.ts
+│   │       ├── scenario-artifact-validator.ts
+│   │       ├── scenario-assembler.ts
+│   │       ├── scenario-processors.ts
+│   │       └── scenario-utils.ts
 │   ├── orchestrators/
-│   │   └── static-analyzer.ts       # five-phase pipeline
+│   │   ├── static-analyzer.ts
+│   │   └── scenario-extractor.ts         
 │   ├── parsers/
 │   │   ├── ast-utils.ts
 │   │   └── template-parser.ts
-│   └── models/
-│       ├── component-info.ts
-│       ├── event-info.ts
-│       ├── module-info.ts
-│       ├── navigation-graph.ts
-│       ├── route-info.ts
-│       └── widget-info.ts
+│   ├── models/
+│   │   ├── analyzer-config.ts            
+│   │   ├── component-info.ts
+│   │   ├── event-info.ts
+│   │   ├── module-info.ts
+│   │   ├── navigation-graph.ts
+│   │   ├── route-info.ts
+│   │   ├── scenarios/
+│   │   │   ├── scenario-constants.ts     
+│   │   │   └── scenario-info.ts          
+│   │   └── widget-info.ts
+│   └── logging/
+│       └── logger.ts
 ├── .gitignore
-├── nodemon.json                    # `npm run dev` configuration
+├── nodemon.json
 ├── package.json
 ├── tsconfig.json
 └── LICENSE
@@ -115,14 +138,10 @@ automated-frontend-testing-static-analyzer/
 
 ## 🛠 Installation & Build
 ```bash
-# Clone
 git clone https://github.com/anonbnr/automated-frontend-testing-static-analyzer.git
 cd automated-frontend-testing-static-analyzer
 
-# Install dependencies
 npm install
-
-# Build TypeScript to JavaScript
 npm run build
 ```
 
@@ -130,16 +149,23 @@ npm run build
 
 ```bash
 npm run dev
-# → watches `src/**/*.ts` and restarts on changes via nodemon
+# watches `src/**/*.ts` and restarts on changes via nodemon
 ```
 
 ---
 
 ## 🖥️ Running the API Server
-By default, the server listens on port **3000** (override with `PORT` in your environment).
+By default, the server listens on **port 3000** (override with `PORT`).
 
 ```bash
 npm start
+```
+
+Health check:
+
+```bash
+curl http://localhost:3000/healthz
+# -> { "ok": true }
 ```
 
 ---
@@ -148,6 +174,7 @@ npm start
 All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/your/angular/project"` and, where required, `"selector": "app-your-component"`.
 
 ### POST `/modules`
+
 ```json
 { "projectRoot": "/path/to/angular/app" }
 ```
@@ -157,13 +184,14 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ```json
 {
   "success": true,
-  "modules": [ /* ModuleInfo[] */ ]
+  "modules": [ /* ModuleInfo[] (with lazy flags, routes assigned) */ ]
 }
 ```
 
 ---
 
 ### POST `/components`
+
 ```json
 { "projectRoot": "/path/to/angular/app" }
 ```
@@ -180,6 +208,7 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ---
 
 ### POST `/routes`
+
 ```json
 { "projectRoot": "/path/to/angular/app" }
 ```
@@ -193,11 +222,11 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
     "routes":        [ /* ComponentRoute[] */ ],
     "redirections":  [ /* RedirectRoute[] */ ],
     "roles": {
-      "root":    ["app-root"],
-      "global":  [/* selectors */],
-      "shared":  [/* selectors */],
-      "mapped":  [/* selectors */],
-      "dead":    [/* selectors */]
+      "root":   ["app-root"],
+      "global": [/* selectors */],
+      "shared": [/* selectors */],
+      "mapped": [/* selectors */],
+      "dead":   [/* selectors */]
     }
   }
 }
@@ -206,6 +235,7 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ---
 
 ### POST `/template`
+
 ```json
 {
   "projectRoot": "/path/to/angular/app",
@@ -225,6 +255,7 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ---
 
 ### POST `/widgets`
+
 ```json
 {
   "projectRoot": "/path/to/angular/app",
@@ -237,13 +268,14 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ```json
 {
   "success": true,
-  "widgets": [ /* WidgetInfo tree, recursive */ ]
+  "widgets": [ /* WidgetInfo tree (recursive) */ ]
 }
 ```
 
 ---
 
-### POST `/widget-id`
+### POST `/widget-ids`  ← **renamed**
+
 ```json
 {
   "projectRoot": "/path/to/angular/app",
@@ -256,13 +288,14 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ```json
 {
   "success": true,
-  "widgetIDs": [ "app-some-component__BUTTON__save__a1b2c3d4", ... ]
+  "widgetIDs": [ "app-some-component__BUTTON__save__a1b2c3d4", "..." ]
 }
 ```
 
 ---
 
 ### POST `/business-logic`
+
 ```json
 { "projectRoot": "/path/to/angular/app" }
 ```
@@ -279,34 +312,107 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 ---
 
 ### POST `/graph`
+
 ```json
 { "projectRoot": "/path/to/angular/app" }
 ```
 
-**Response**
+**Response (shape)**
 
 ```json
 {
   "success": true,
   "graph": {
-    "nodes":       [ /* GraphNode[] */ ],
-    "edges":       [ /* GraphEdge[] */ ],
-    "transitions": [ /* GraphTransition[] */ ]
+    "nodes": [
+      { "id": "/users", "type": "route", "attributes": {
+        "pathMatch": "full",
+        "canActivate": [/* ... */],
+        "canActivateChild": [/* ... */],
+        "canLoad": [/* ... */],
+        "resolve": { /* ... */ },
+        "data": { /* route data incl. title if any */ }
+      }},
+      { "id": "app-profile__BUTTON__save__deadbeef", "type": "widget", "attributes": {
+        "widgetType": "button",
+        "events": { "click": "onSave" },
+        /* original attributes... */
+      }, "validationRules": [/*...*/], "triggersFormSubmission": false },
+      { "id": "/backend/user/save", "type": "backend" },
+      { "id": "https://example.com", "type": "external-route" },
+      { "id": "/ui/app-profile__.../toggle", "type": "virtual-route",
+        "attributes": { "kind": "ui-effect", "handler": "toggle", "uiEffects": ["toggle"] } }
+    ],
+    "edges": [
+      { "type": "contains", "from": "/users", "to": "app-profile" },
+      /* ... */
+    ],
+    "transitions": [
+      { "type": "click", "from": "app-profile__BUTTON__save__deadbeef", "to": "/users" },
+      { "type": "service-call", "from": "app-profile__BUTTON__save__deadbeef", "to": "/backend/user/save",
+        "metadata": { "service": "user", "method": "save", "sourceEvent": "click", "handler": "onSave" } },
+      { "type": "submit", "from": "app-profile__BUTTON__submit__beadfeed", "to": "app-profile__FORM__main__c0ffee" }
+    ]
   }
 }
 ```
 
 ---
 
+### POST `/scenarios`  ← **new**
+Builds and returns user-journey scenarios from the navigation graph.
+
+**Request**
+
+```json
+{
+  "projectRoot": "/path/to/angular/app",
+  "fanoutMode": "primary",   // optional: "primary" | "collapse"
+  "maxDepth": 0              // optional (reserved)
+}
+```
+
+**Response (shape)**
+
+```json
+{
+  "success": true,
+  "scenarios": [
+    {
+      "id": "AppModule→/users[routerLink]→/users/:id",
+      "rootModule": "AppModule",
+      "steps": [
+        { "stepType": "module", "nodeId": "AppModule" },
+        { "stepType": "route",  "nodeId": "/users" },
+        { "stepType": "widget", "nodeId": "app-users__A__details__cafebabe", "metadata": { /* attrs/rules */ } },
+        { "stepType": "interaction", "nodeId": "app-users__A__details__cafebabe", "via": "routerLink" },
+        { "stepType": "route", "nodeId": "/users/:id" }
+      ],
+      "intent": "User Profile",
+      "success": true
+    }
+  ]
+}
+```
+
+---
+
 ## ⚙️ Configuration
-Create a `.env` in project root or export environment variables:
+Create a `.env` (or export env vars):
 
 ```bash
-# API server port
 PORT=3000
 ```
+
+**Advanced (code-level) analyzer config** – `src/models/analyzer-config.ts`:
+* `backend.granularity`: `'single' | 'service' | 'method'` (default: `'method'`)
+* `backend.serviceCallerRe`: regex to detect backend callers (default matches `*Service`, `http`, `httpClient`, `api`)
+* `noise.methodNames` / `noise.freeFunctions`: filter Rx/plumbing/logging calls
+
+> Note: advanced config is currently wired through constructors (not via the REST API).
 
 ---
 
 ## 📜 License
 [MIT](LICENSE)
+
+---

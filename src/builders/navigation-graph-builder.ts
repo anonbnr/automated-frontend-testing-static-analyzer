@@ -26,7 +26,9 @@
 
 import { LogicUtils } from "../analyzers/business-logic/logic-utils.js";
 import { RoutingUtils } from "../analyzers/routes/route-utils.js";
+import { WidgetUtils } from "../analyzers/template/widgets/widget-utils.js";
 import logger from "../logging/logger.js";
+import { AnalyzerConfig, DEFAULT_ANALYZER_CONFIG } from "../models/analyzer-config.js";
 import { ComponentInfo, ComponentRegistry } from "../models/component-info.js";
 import { WidgetEventMap } from "../models/event-info.js";
 import { ModuleRegistry } from "../models/module-info.js";
@@ -50,6 +52,8 @@ export class NavigationGraphBuilder {
 
     /** All dynamic event-driven or navigation transitions */
     private transitions: GraphTransition[] = [];
+
+    constructor(private cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG) { }
 
     // ──────────────────────────────────────────────────────────────────────────
     // PUBLIC API
@@ -108,6 +112,7 @@ export class NavigationGraphBuilder {
         this._registerLazyLoadTransitions(compRouteMap, moduleRegistry);
         this._registerRedirectTransitions(compRouteMap);
         this._registerWidgetTransitions(compRouteMap, widgetEventMaps);
+        this._registerFormFieldTransitions();
     }
 
     /**
@@ -163,7 +168,16 @@ export class NavigationGraphBuilder {
      */
     private _registerRoutes(compRouteMap: ComponentRouteMap): void {
         for (const compR of compRouteMap.routeMap.routes) {
-            this._addNode(compR.route, "route");
+            this._addNode(compR.route, "route", {
+                attributes: {
+                    pathMatch: compR.pathMatch,
+                    canActivate: compR.canActivate,
+                    canActivateChild: compR.canActivateChild,
+                    canLoad: compR.canLoad,
+                    resolve: compR.resolve,
+                    data: compR.data
+                }
+            });
             if (compR.module)
                 this._addStaticEdge(compR.module, compR.route);
         }
@@ -211,9 +225,18 @@ export class NavigationGraphBuilder {
         widget: WidgetInfo,
         parentId: string
     ): void {
+        // compute the *effective* widget‐type once
+        const effectiveType = WidgetUtils.wType(widget);
+        // merge in original attrs + our effective widgetType
+        const metaAttrs = {
+            ...widget.attributes,
+            events: widget.events,
+            widgetType: effectiveType
+        };
+
         // 1) register this widget as a node
         this._addNode(widget.id, "widget", {
-            attributes: widget.attributes,
+            attributes: metaAttrs,
             validationRules: widget.validationRules,
             triggersFormSubmission: widget.triggersFormSubmission,
         });
@@ -270,18 +293,25 @@ export class NavigationGraphBuilder {
      */
     private _registerRedirectTransitions(compRouteMap: ComponentRouteMap): void {
         for (const rd of compRouteMap.routeMap.redirections) {
-            this._addNode(rd.route, "route");
+            this._addNode(rd.route, "route", { attributes: { pathMatch: rd.pathMatch } });
             this._addNode(rd.redirectTo, "route");
-            this._addDynamicTransition(rd.route, rd.redirectTo, "static-redirect");
+            this._addDynamicTransition(
+                rd.route,
+                rd.redirectTo,
+                "static-redirect",
+                { pathMatch: rd.pathMatch }
+            );
         }
     }
 
     /**
-     * Emit widget-driven transitions:
-     *  - href → external-route  
-     *  - router.navigate/navigate → route  
-     *  - routerLink → route  
-     *  - other → virtual-route
+    * Emit widget-driven transitions:
+    *  1) skip empty targets
+    *  2) href → external-route
+    *  3) routerLink → route (canonicalized) or external-route, else virtual-route
+    *  4) router.navigate/navigateByUrl → route (canonicalized)
+    *  5) backend (service/http) → virtual-route under /backend (per config)
+    *  6) remaining → literal route if known, else virtual-route
      *
      * @param compRouteMap - raw routes + roles
      * @param widgetEventMaps - business-logic maps
@@ -292,49 +322,159 @@ export class NavigationGraphBuilder {
     ): void {
         const knownRoutes = new Set(compRouteMap.routeMap.routes.map(r => r.route));
 
+        // small local helper
+        const ensureLeadingSlash = (s: string) => (s.startsWith('/') ? s : `/${s}`);
+
         for (const wem of widgetEventMaps) {
             for (const ev of wem.eventContexts) {
+                // Accumulate per event
+                const navTargets = new Set<string>();            // routes only
+                const backendCalls = new Map<string, { service: string; method: string }>(); // key=service.method
+                const uiEffects: string[] = [];                  // kept in metadata only
+
                 for (const call of ev.callContexts) {
-                    // Skip empty targets
-                    if (!call.called)
+                    const called = String(call.called || '').trim();
+                    // 1) skip empty targets
+                    if (!called) continue;
+
+                    // 2) href → external-route (absolute URLs or any href literal)
+                    if (ev.event === 'href') {
+                        this._addNode(called, 'external-route');
+                        this._addDynamicTransition(wem.widgetID, called, ev.event, { params: call.data, handler: ev.handler });
                         continue;
-
-                    let target: string;
-                    let type: GraphNodeType;
-
-                    // a) <a href="...">
-                    if (ev.event === "href") {
-                        target = call.called;
-                        type = "external-route";
                     }
 
-                    // b) router.navigate(...) → join the segments
-                    else if (LogicUtils.isRouterNavigateCall(call.caller) && call.data.length) {
-                        target = "/" + call.data.join("/");
-                        type = "route";
-                    }
-                    // c) routerLink or literal call → direct route
-                    else {
-                        const raw = call.called.startsWith('/')
-                            ? call.called
-                            : `/${call.called}`;
-
-                        if (knownRoutes.has(raw)) {
-                            target = raw;
-                            type = "route";
-                        }
-                        else {
-                            target = `/virtual${raw}`;
-                            type = "virtual-route";
-                        }
+                    // 3) routerLink → canonical route / external / virtual
+                    if (ev.event === 'routerLink') {
+                        const canonical = RoutingUtils.canonicalizeToKnownRoute(ensureLeadingSlash(called), knownRoutes);
+                        if (knownRoutes.has(canonical)) navTargets.add(canonical);
+                        continue;
                     }
 
-                    this._addNode(target, type);
-                    this._addDynamicTransition(wem.widgetID, target, ev.event, { params: call.data });
+                    // 4) router.navigate/navigateByUrl([...]) → route
+                    const isNav = LogicUtils.isRouterNavigateCall(`${call.caller}.${call.called}`)
+                        && Array.isArray(call.data) && call.data.length;
+
+                    if (isNav) {
+                        const raw = ensureLeadingSlash(call.data.join('/'));
+                        const canonical = RoutingUtils.canonicalizeToKnownRoute(raw, knownRoutes);
+                        if (knownRoutes.has(canonical)) navTargets.add(canonical);
+                        continue;
+                    }
+
+                    // 5) backend (sentinel or caller heuristic) → virtual-route under /backend
+                    const isBackend = (Array.isArray(call.data) && call.data[0] === '/backend')
+                        || LogicUtils.isBackendServiceCaller(call.caller, this.cfg);
+
+                    if (isBackend) {
+                        // skip noisy calls
+                        if (this.cfg.noise.methodNames.has(call.called)) continue;
+
+
+                        const rawService =
+                            (Array.isArray(call.data) && call.data[1]) ||
+                            call.caller.replace(/^this\./, '').split('.')[0];
+                        const service = this.cfg.backend.normalizeServiceName(rawService);
+                        const method = (Array.isArray(call.data) && call.data[2]) || call.called || 'call';
+                        backendCalls.set(`${service}.${method}`, { service, method });
+                        continue;
+                    }
+
+                    // 6) Everything else is a UI-only effect → keep off the graph
+                    uiEffects.push(called);
+                }
+
+                // 1) route nav (at most one)
+                const nav = Array.from(navTargets).sort()[0];
+                if (nav) {
+                    this._addNode(nav, 'route');
+                    this._addDynamicTransition(wem.widgetID, nav, ev.event, { handler: ev.handler, uiEffects });
+                }
+
+                // 2) backend calls
+                for (const { service, method } of backendCalls.values()) {
+                    const base = '/backend';
+                    const g = this.cfg.backend.granularity;
+                    const target =
+                        g === 'single' ? base :
+                            g === 'service' ? `${base}/${service}` :
+                                `${base}/${service}/${method}`;
+
+                    this._addNode(target, 'backend');
+                    this._addDynamicTransition(wem.widgetID, target, 'service-call', { service, method, sourceEvent: ev.event, handler: ev.handler, uiEffects });
+                }
+
+                // 3) UI-only effects → emit *virtual* target
+                if (!nav && backendCalls.size === 0) {
+                    const label = (ev.handler && ev.handler.trim()) || uiEffects[0] || String(ev.event);
+                    const target = `/ui/${wem.widgetID}/${label}`;
+                    this._addNode(target, 'virtual-route', {
+                        attributes: { kind: 'ui-effect', handler: ev.handler, uiEffects }
+                    });
+                    this._addDynamicTransition(
+                        wem.widgetID,
+                        target,
+                        ev.event as any, // e.g. 'click', 'input'
+                        { handler: ev.handler, uiEffects }
+                    );
                 }
             }
         }
     }
+
+    /**
+    * For each widget that *triggers* form submission (e.g. <button type="submit">),
+    * add exactly one dynamic transition to its nearest ancestor <form>:
+    *
+    *   (submit-trigger widget) --submit--> (form widget)
+    *
+    * The form itself remains the only node that has submit→route/backend transitions.
+    * No field-level input/change duplication is added.
+    */
+
+    private _registerFormFieldTransitions(): void {
+        for (const node of this.nodes.values()) {
+            if (node.type !== 'widget') continue;
+
+            // const wt = (node.attributes?.widgetType as string) || '';
+            const isSubmitTrigger =
+                node.triggersFormSubmission === true;
+
+            if (!isSubmitTrigger) continue;
+
+            const formId = this._findNearestAncestorForm(node.id);
+            if (!formId) continue;
+
+            // Single edge from the trigger to the form, typed as 'submit'.
+            // Keep the original source event in metadata for traceability.
+            this._addDynamicTransition(node.id, formId, 'submit', { sourceEvent: 'click' });
+        }
+
+    }
+
+    /**
+    * Walks static 'contains' edges upward to find the nearest ancestor <form> widget.
+    */
+    private _findNearestAncestorForm(startId: string): string | undefined {
+        let cur = startId;
+
+        // Look up the parent by scanning static 'contains' edges (to = cur).
+        const findParent = (childId: string) =>
+            this.edges.find(e => e.type === 'contains' && e.to === childId)?.from;
+
+        while (true) {
+            const parentId = findParent(cur);
+            if (!parentId) return undefined;
+
+            const parent = this.nodes.get(parentId);
+            const pType = parent?.attributes?.widgetType as string | undefined;
+            const isForm = parent?.type === 'widget' && (pType === 'form');
+
+            if (isForm) return parentId;
+            cur = parentId;
+        }
+    }
+
 
     // ──────────────────────────────────────────────────────────────────────────
     // PRIVATE HELPERS: NODES & EDGES
@@ -453,6 +593,22 @@ export class NavigationGraphBuilder {
         if (roles.shared.some(c => c.selector === selector)) return 'shared';
         if (roles.mapped.some(c => c.selector === selector)) return 'mapped';
         return 'mapped';  // default
+    }
+
+    /** helper: walk static 'contains' edges to collect all descendants of a node */
+    private _collectDescendants(rootId: string): string[] {
+        const out: string[] = [];
+        const stack = [rootId];
+        while (stack.length) {
+            const cur = stack.pop()!;
+            for (const e of this.edges) {
+                if (e.from === cur && e.type === 'contains') {
+                    out.push(e.to);
+                    stack.push(e.to);
+                }
+            }
+        }
+        return out;
     }
 
     /**

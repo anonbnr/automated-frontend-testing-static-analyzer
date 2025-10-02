@@ -223,7 +223,7 @@ export class RoutingUtils {
                 const arr = decl?.getInitializer()?.asKind(SyntaxKind.ArrayLiteralExpression);
                 if (arr) {
                     logger.log(
-                        'trace', 
+                        'trace',
                         `[RoutingUtils] Resolving identifier "${name}" to array literal`
                     );
                     await this.processRoutes(project, sf, seenFiles, arr.getElements(), map);
@@ -476,12 +476,12 @@ export class RoutingUtils {
         }
 
         // Ensure redirect-only paths still show up as “empty” routes
-        for (const rd of raw.redirections) {
-            if (!uniqR.has(rd.route))
-                uniqR.set(rd.route, { route: rd.route });
-            if (!uniqR.has(rd.redirectTo))
-                uniqR.set(rd.redirectTo, { route: rd.redirectTo });
-        }
+        // for (const rd of raw.redirections) {
+        //     if (!uniqR.has(rd.route))
+        //         uniqR.set(rd.route, { route: rd.route });
+        //     if (!uniqR.has(rd.redirectTo))
+        //         uniqR.set(rd.redirectTo, { route: rd.redirectTo });
+        // }
 
         return {
             routes: Array.from(uniqR.values()),
@@ -646,4 +646,22 @@ export class RoutingUtils {
             roles,
         };
     }
+
+    static canonicalizeToKnownRoute(target: string, knownRoutes: Set<string>): string {
+        if (knownRoutes.has(target)) return target;
+        const tSegs = target.replace(/^\/+/, '').split('/');
+        for (const kr of knownRoutes) {
+            const rSegs = kr.replace(/^\/+/, '').split('/');
+            if (rSegs.length !== tSegs.length) continue;
+            let ok = true;
+            for (let i = 0; i < rSegs.length; i++) {
+                const rs = rSegs[i], ts = tSegs[i];
+                if (rs.startsWith(':')) continue;     // param matches anything
+                if (rs !== ts) { ok = false; break; } // static segment must match
+            }
+            if (ok) return kr; // map to the canonical template
+        }
+        return target; // no match; leave as-is
+    }
+
 }

@@ -1,25 +1,27 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // api/index.ts
 //
-// Entry point for the StaticAnalyzer API.  
-// - Creates and configures an Express app  
-// - Applies shared middleware (CORS, JSON body parsing)  
-// - Mounts each feature router under its path  
-// - Applies centralized error handler  
-// - Starts the HTTP server on the configured port
+// Static Analyzer API bootstrap:
+//  - Creates an Express app
+//  - Applies shared middleware (CORS, JSON body parsing)
+//  - Mounts feature routers
+//  - Adds a tiny health endpoint
+//  - Installs centralized error handler
+//  - Starts the HTTP server
 // ──────────────────────────────────────────────────────────────────────────────
 
-import express, { Express } from 'express';
+import express, { Express, Request, Response } from 'express';
+import logger from '../logging/logger.js';
 import { corsMiddleware, errorHandler, jsonBodyParser } from './middleware.js';
 import logicRouter from './routes/business-logic.js';
 import componentsRouter from './routes/components.js';
 import graphRouter from './routes/graph.js';
 import modulesRouter from './routes/modules.js';
 import routesRouter from './routes/routes.js';
+import scenarioRouter from './routes/scenarios.js';
 import templateRouter from './routes/template.js';
-import widgetIdRouter from './routes/widget-id.js';
+import widgetIdsRouter from './routes/widget-ids.js';
 import widgetsRouter from './routes/widgets.js';
-import logger from '../logging/logger.js';
 
 const app: Express = express();
 const port = process.env.PORT ?? 3000;
@@ -28,15 +30,27 @@ const port = process.env.PORT ?? 3000;
 app.use(corsMiddleware);
 app.use(jsonBodyParser);
 
+// ── HEALTH ───────────────────────────────────────────────────────────────────
+app.get("/healthz", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true });
+});
+
 // ── ROUTES ────────────────────────────────────────────────────────────────────
-app.use('/modules', modulesRouter);
-app.use('/components', componentsRouter);
-app.use('/routes', routesRouter);
-app.use('/template', templateRouter);
-app.use('/widgets', widgetsRouter);
-app.use('/widget-id', widgetIdRouter);
-app.use('/business-logic', logicRouter);
-app.use('/graph', graphRouter);
+/** Centralized router registration keeps index clean and consistent. */
+const ROUTES: Array<[path: string, router: any]> = [
+    ["/modules", modulesRouter],
+    ["/components", componentsRouter],
+    ["/routes", routesRouter],
+    ["/template", templateRouter],
+    ["/widgets", widgetsRouter],
+    ["/widget-ids", widgetIdsRouter],
+    ["/business-logic", logicRouter],
+    ["/graph", graphRouter],
+    ["/scenarios", scenarioRouter],
+];
+
+for (const [path, router] of ROUTES) app.use(path, router);
 
 // ── ERROR HANDLING ────────────────────────────────────────────────────────────
 app.use(errorHandler);

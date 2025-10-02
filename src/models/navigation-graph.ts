@@ -20,14 +20,16 @@ export type GraphNodeType =
     | "module"
     /** A URL route path, e.g. "/dashboard" */
     | "route"
-    /** A non-UI target, such as a backend or virtual API */
-    | "virtual-route"
-    /** An external link (http/https) */
-    | "external-route"
     /** An Angular component (decorated with @Component) */
     | "component"
     /** A UI widget extracted from a template */
     | "widget"
+    /** An external link (http/https) */
+    | "external-route"
+    /** Backend nodes */
+    | "backend"
+    /** UI-only effect targets */
+    | "virtual-route";
     ;
 
 /**
@@ -84,7 +86,8 @@ export type StaticGraphRelationType
 export type DynamicGraphRelationType
     = UserEventType
     | NavEventType
-    | "lazy-load";
+    | "lazy-load"
+    | "service-call";
 
 /** Union of all possible relation types. */
 export type GraphRelationType = StaticGraphRelationType | DynamicGraphRelationType;

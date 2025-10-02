@@ -12,6 +12,7 @@ import { NavEventType, UserEventType } from "../../../models/event-info.js";
 import { WidgetInfo } from "../../../models/widget-info.js";
 import { WidgetIDGenerator } from "./widget-id-generator.js";
 import logger from "../../../logging/logger.js";
+import { WidgetUtils } from "./widget-utils.js";
 
 /**
  * Recursively scans an Angular template AST to build a hierarchy of interactive widgets.
@@ -33,16 +34,8 @@ import logger from "../../../logging/logger.js";
  */
 export class WidgetProcessor {
     private _idGen = new WidgetIDGenerator();
-    private _widgetTags = new Set([
-        // Standard HTML controls
-        "button", "input", "option", "select", "textarea", "form", "a",
-        // Material (and any custom) widgets
-        "mat-button", "mat-icon-button", "mat-select", "mat-checkbox",
-        "mat-button-toggle-group", "mat-button-toggle",
-        "mat-radio-group", "mat-radio-button",
-        "mat-option", "mat-datepicker-toggle",
-    ]);
-    private _validationRules = ['required', 'pattern', 'min', 'max', 'minLength', 'maxLength'];
+    private _widgetTags = WidgetUtils.WIDGET_TAGS;
+    private _validationRules = WidgetUtils.VALIDATION_RULES;
 
     /**
      * Creates a new widget processor for the provided 
@@ -143,7 +136,7 @@ export class WidgetProcessor {
         const id = this._getID(el, attributes, namespace);
 
         // Extract Type: tag of the widget
-        const type = el.name.toLowerCase();
+        const type = WidgetUtils.resolveWidgetType(el.name, attributes);
 
         // Collect Events (outputs + routerLink/href)
         const events = this._collectEvents(el, attributes);
@@ -198,7 +191,7 @@ export class WidgetProcessor {
     private _getID(el: TmplAstElement, attrs: Record<string, any>, namespace: string): string {
         // Check if the element already has an ID
         // If not, generate a unique ID for it using the widget ID generator
-        const id = attrs.id?.trim() || this._idGen.generateID(el);
+        const id: string = attrs.id?.trim() || this._idGen.generateID(el);
 
         // Add namespace contextualization to the ID before returning it
         return `${namespace}${this._idGen.ID_SEPARATOR}${id}`;

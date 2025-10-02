@@ -14,6 +14,8 @@ import { Project } from 'ts-morph';
 import { ModuleRegistryBuilder } from '../../builders/module-registry-builder.js';
 import logger from '../../logging/logger.js';
 import { resolveTsConfig } from '../utils.js';
+import { ComponentRegistryBuilder } from '../../builders/component-registry-builder.js';
+import { RouteAnalyzer } from '../../analyzers/routes/route-analyzer.js';
 
 const router = Router();
 
@@ -62,11 +64,24 @@ router.post('/', async (req: Request, res: Response) => {
         // Phase 1: Discover modules
         logger.info("[POST /modules] Discovering modules...");
         await builder.discoverModules();
-        const modules = builder.registry.modules;
+        let modules = builder.registry.modules;
         logger.info("[POST /modules] Discovered %d modules", modules.length);
 
-        // Return the list of ModuleInfo
+        // Phase 2a: build a ComponentRegistry (so we know all our components)
+        const compReg = await new ComponentRegistryBuilder(project)
+            .buildComponentsRegistry();
+
+        // Phase 2b: run the full route analysis
+        const routeAnlz = new RouteAnalyzer(project);
+        const compRouteMap = await routeAnlz.analyzeProject(compReg);
+
+        // Phase 2c: tag lazy=true and fill in each route.module
+        builder.assignRoutesToModules(compRouteMap);
+
+        // finally return modules with correct `.lazy` flags
+        modules = builder.registry.modules;
         return res.json({ success: true, modules });
+
     } catch (err: any) {
         logger.error("[POST /modules] Fatal error: %o", err);
         return res

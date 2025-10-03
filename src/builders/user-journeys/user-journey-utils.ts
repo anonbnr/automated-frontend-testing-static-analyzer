@@ -1,20 +1,20 @@
-// src/builders/scenarios/scenario-utils.ts
+// src/builders/user-journeys/user-journey-utils.ts
 /**
- * scenario-utils
- * --------------
+ * user-journey-utils
+ * ------------------
  * Small, pure helpers that don't touch the graph. These implement the core
  * step/interaction heuristics used by processors and builders.
  */
 
 import { NavEventType } from "../../models/event-info.js";
-import { VIRTUAL_ERROR } from "../../models/scenarios/scenario-constants.js";
-import { ScenarioStep } from "../../models/scenarios/scenario-info.js";
+import { VIRTUAL_ERROR } from "../../models/user-journeys/user-journey-constants.js";
+import { UserJourneyStep } from "../../models/user-journeys/user-journey-info.js";
 
 /** True iff this step's type is "interaction" */
-export const isInteractionStep = (s: ScenarioStep) => s.stepType === "interaction";
+export const isInteractionStep = (s: UserJourneyStep) => s.stepType === "interaction";
 
-/** True iff this step is a terminal step in a scenario */
-export const isTerminalStep = (s: ScenarioStep) =>
+/** True iff this step is a terminal step in a user journey */
+export const isTerminalStep = (s: UserJourneyStep) =>
     s.stepType === "route" || s.stepType === "backend" ||
     s.stepType === "external-route" || s.stepType === "virtual-route";
 
@@ -34,7 +34,7 @@ export function isNavEvent(via: any): via is NavEventType | 'submit' {
  *   3) Fallback to the last interaction before cutoff.
  * Returns -1 if no interactions exist.
  */
-export function lastNavInteractionIndex(steps: ScenarioStep[]): number {
+export function lastNavInteractionIndex(steps: UserJourneyStep[]): number {
     if (!steps.length) return -1;
 
     // Find the index of the final terminal step, if present.
@@ -58,7 +58,7 @@ export function lastNavInteractionIndex(steps: ScenarioStep[]): number {
 }
 
 /** True iff last step is NOT '/virtual/error' (backend/virtual). */
-export function endsWithErrorVirtualRoute(steps: ScenarioStep[]): boolean {
+export function endsWithErrorVirtualRoute(steps: UserJourneyStep[]): boolean {
     const last = steps[steps.length - 1];
     return !!last &&
         (last.stepType === "backend" || last.stepType === "virtual-route") &&

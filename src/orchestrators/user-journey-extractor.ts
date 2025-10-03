@@ -1,10 +1,10 @@
-// src/orchestrators/scenario-extractor.ts
+// src/orchestrators/user-journey-extractor.ts
 /**
- * ScenarioExtractor
+ * UserJourneyExtractor
  * =================
- * Orchestrates the end-to-end pipeline to produce a ScenarioRegistry:
+ * Orchestrates the end-to-end pipeline to produce a UserJourneyRegistry:
  *   1) Runs the static analyzer to build the navigation multigraph.
- *   2) Uses ScenarioRegistryBuilder to assemble + process scenarios.
+ *   2) Uses UserJourneyRegistryBuilder to assemble + process user journeys.
  *
  * Notes
  * -----
@@ -12,9 +12,9 @@
  * - It accepts fanout behavior so callers can choose "primary" vs "collapse".
  */
 
-import { FanoutMode } from "../builders/scenarios/scenario-processors.js";
-import { ScenarioRegistryBuilder } from "../builders/scenarios/scenario-registry-builder.js";
-import { ScenarioRegistry } from "../models/scenarios/scenario-info.js";
+import { FanoutMode } from "../builders/user-journeys/user-journey-processors.js";
+import { UserJourneyRegistryBuilder } from "../builders/user-journeys/user-journey-registry-builder.js";
+import { UserJourneyRegistry } from "../models/user-journeys/user-journey-info.js";
 import { StaticAnalyzer } from "./static-analyzer.js";
 
 export interface ExtractOptions {
@@ -27,8 +27,7 @@ export interface ExtractOptions {
     maxDepth?: number;
 }
 
-export class ScenarioExtractor {
-
+export class UserJourneyExtractor {
     private staticAnalyzer: StaticAnalyzer;
 
     /**
@@ -39,18 +38,18 @@ export class ScenarioExtractor {
     }
 
     /**
-    * Run the pipeline and return a ScenarioRegistry.
+    * Run the pipeline and return a UserJourneyRegistry.
     *
     * @param options Extraction options (fanout mode, reserved knobs)
     */
-    async extract(options: ExtractOptions = {}): Promise<ScenarioRegistry> {
+    async extract(options: ExtractOptions = {}): Promise<UserJourneyRegistry> {
         const { fanoutMode = "primary" } = options;
 
         // 1) build the navigation multigraph via static analysis
         const navGraph = await this.staticAnalyzer.analyze();
 
-        // 2) assemble + process scenarios
-        return new ScenarioRegistryBuilder(
+        // 2) assemble + process user journeys
+        return new UserJourneyRegistryBuilder(
             this.staticAnalyzer.compRouteMap,
             navGraph,
             fanoutMode

@@ -1,14 +1,14 @@
-// src/builders/scenarios/intent-labels.ts
+// src/builders/user-journeys/intent-labels.ts
 /**
  * intent-labels
  * -------------
- * Helpers to derive human-friendly intent labels for scenarios that end on
+ * Helpers to derive human-friendly intent labels for user journeys that end on
  * non-route terminals (external/backend/virtual) and a thin wrapper to select
- * the right strategy given a scenario.
+ * the right strategy given a user journey.
  */
 
-import { VIRTUAL_ERROR } from "../../models/scenarios/scenario-constants.js";
-import { Scenario, ScenarioStep } from "../../models/scenarios/scenario-info.js";
+import { VIRTUAL_ERROR } from "../../models/user-journeys/user-journey-constants.js";
+import { UserJourney, UserJourneyStep } from "../../models/user-journeys/user-journey-info.js";
 import { IntentResolver } from "./intent-resolver.js";
 
 /** Label an external URL succinctly. */
@@ -38,15 +38,15 @@ export function labelForVirtual(id: string): string {
 }
 
 /**
- * Map the last meaningful step of a scenario into a bucket label for UIs.
+ * Map the last meaningful step of a user journey into a bucket label for UIs.
  * Falls back to the last route (via resolver) when the tail isn't a route.
  */
-export function deriveScenarioIntent(
-    s: Scenario,
+export function deriveUserJourneyIntent(
+    j: UserJourney,
     resolver: IntentResolver,
     unknown = "Other"
 ): string {
-    const last: ScenarioStep | undefined = s.steps[s.steps.length - 1];
+    const last: UserJourneyStep | undefined = j.steps[j.steps.length - 1];
     if (!last) return unknown;
 
     switch (last.stepType) {
@@ -55,7 +55,7 @@ export function deriveScenarioIntent(
         case "backend": return labelForBackendTarget(last.nodeId);
         case "virtual-route": return last.nodeId === VIRTUAL_ERROR ? "Error" : labelForVirtual(last.nodeId);
         default: {
-            const r = [...s.steps].reverse().find(st => st.stepType === "route");
+            const r = [...j.steps].reverse().find(st => st.stepType === "route");
             return r ? resolver.resolve(r.nodeId) : unknown;
         }
     }

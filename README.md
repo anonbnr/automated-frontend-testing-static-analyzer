@@ -1,5 +1,5 @@
 # Static Analyzer for Automated Functional Testing of Frontend Web Applications
-A core part of our **Automation Framework for Functional Testing**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph** and derive **user-journey scenarios**.
+A core part of our **Automation Framework for Functional Testing**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph** and derive **user journeys**.
 
 - **Routes** & redirects  
 - **NgModules** & component declarations  
@@ -7,7 +7,7 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
 - **Interactive widgets** (buttons, forms, inputs, anchors, Material controls)  
 - **Event bindings** → handler call graphs (`router.navigate`, service calls, custom logic)  
 - **Form validation rules** & **submission triggers**  
-- **Scenarios** (module/route/component/widget/interaction → terminal outcomes)
+- **User Journeys** (module/route/component/widget/interaction → terminal outcomes)
 
 ---
 
@@ -44,13 +44,13 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
    - **Widget node attributes**: `attributes`, `events`, `widgetType`, `validationRules`, `triggersFormSubmission`  
    - **Form submission modeling**: submit-trigger widget → `submit` → nearest ancestor `<form>`.  
    - **Canonicalization** of navigation targets to known routes when possible.
-6) **Scenario Extraction**  
-   - Derives user-journey **scenarios** from the graph:
+6) **User Journey Extraction**  
+   - Derives **user journeys** from the graph:
      - Route-scoped & global header paths  
-     - One scenario per terminal outcome: `route` | `external-route` | `backend` | `virtual-route`  
+     - One journey per terminal outcome: `route` | `external-route` | `backend` | `virtual-route`  
      - **Fanout** options: keep siblings (primary) or **collapse** backend tails  
      - `intent` (human label) derived from route titles/paths; `success` computed from error sentinels  
-   - Validates that scenario node IDs align with the graph.
+   - Validation ensures journey step IDs align with the graph
 7) **Express-based REST API**  
    - **POST** `/modules`           → all NgModule metadata (with lazy flags)  
    - **POST** `/components`        → all ComponentInfo (selectors, widgets, nested selectors)  
@@ -60,7 +60,7 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
    - **POST** `/widget-ids`        → flattened widget IDs for one component
    - **POST** `/business-logic`    → widget→event call graphs  
    - **POST** `/graph`             → full `AppNavigation` multigraph  
-   - **POST** `/scenarios`         → user-journey scenarios
+   - **POST** `/user-journeys`     → user journeys
    - **GET**  `/healthz`           → health check
 
 ---
@@ -70,18 +70,18 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
 automated-frontend-testing-static-analyzer/
 ├── src/
 │   ├── api/
-│   │   ├── middleware.ts                # CORS, JSON body parser, error handler
+│   │   ├── middleware.ts
 │   │   ├── routes/
 │   │   │   ├── business-logic.ts
 │   │   │   ├── components.ts
 │   │   │   ├── graph.ts
 │   │   │   ├── modules.ts
 │   │   │   ├── routes.ts
-│   │   │   ├── scenarios.ts             
 │   │   │   ├── template.ts
-│   │   │   ├── widget-ids.ts            
+│   │   │   ├── user-journeys.ts
+│   │   │   ├── widget-ids.ts
 │   │   │   └── widgets.ts
-│   │   └── index.ts                     # Express app entry + /healthz
+│   │   └── index.ts
 │   ├── analyzers/
 │   │   ├── business-logic/
 │   │   │   ├── logic-analyzer.ts
@@ -95,42 +95,42 @@ automated-frontend-testing-static-analyzer/
 │   │       └── widgets/
 │   │           ├── widget-id-generator.ts
 │   │           ├── widget-processor.ts
-│   │           └── widget-utils.ts       
+│   │           └── widget-utils.ts
 │   ├── builders/
 │   │   ├── component-registry-builder.ts
 │   │   ├── module-registry-builder.ts
 │   │   ├── navigation-graph-builder.ts
-│   │   └── scenarios/                    
+│   │   └── user-journeys/
 │   │       ├── graph-helpers.ts
 │   │       ├── intent-labels.ts
 │   │       ├── intent-resolver.ts
-│   │       ├── scenario-artifact-validator.ts
-│   │       ├── scenario-assembler.ts
-│   │       ├── scenario-processors.ts
-│   │       └── scenario-utils.ts
+│   │       ├── user-journey-artifact-validator.ts
+│   │       ├── user-journey-assembler.ts
+│   │       ├── user-journey-processors.ts
+│   │       └── user-journey-registry-builder.ts
 │   ├── orchestrators/
 │   │   ├── static-analyzer.ts
-│   │   └── scenario-extractor.ts         
+│   │   └── user-journey-extractor.ts
 │   ├── parsers/
 │   │   ├── ast-utils.ts
 │   │   └── template-parser.ts
 │   ├── models/
-│   │   ├── analyzer-config.ts            
+│   │   ├── analyzer-config.ts
 │   │   ├── component-info.ts
 │   │   ├── event-info.ts
 │   │   ├── module-info.ts
 │   │   ├── navigation-graph.ts
 │   │   ├── route-info.ts
-│   │   ├── scenarios/
-│   │   │   ├── scenario-constants.ts     
-│   │   │   └── scenario-info.ts          
+│   │   ├── user-journeys/
+│   │   │   ├── user-journey-constants.ts
+│   │   │   └── user-journey-info.ts
 │   │   └── widget-info.ts
 │   └── logging/
 │       └── logger.ts
-├── .gitignore
-├── nodemon.json
 ├── package.json
 ├── tsconfig.json
+├── nodemon.json
+├── .gitignore
 └── LICENSE
 ```
 
@@ -358,8 +358,8 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 
 ---
 
-### POST `/scenarios`  ← **new**
-Builds and returns user-journey scenarios from the navigation graph.
+### POST `/user-journeys`  ← **new**
+Builds and returns user journeys from the navigation graph.
 
 **Request**
 
@@ -376,7 +376,7 @@ Builds and returns user-journey scenarios from the navigation graph.
 ```json
 {
   "success": true,
-  "scenarios": [
+  "journeys": [
     {
       "id": "AppModule→/users[routerLink]→/users/:id",
       "rootModule": "AppModule",

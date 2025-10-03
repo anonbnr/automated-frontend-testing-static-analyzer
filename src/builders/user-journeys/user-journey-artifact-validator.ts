@@ -1,7 +1,7 @@
-// src/builders/scenarios/scenario-artifact-validator.ts
+// src/builders/user-journeys/user-journey-artifact-validator.ts
 import logger from "../../logging/logger.js";
 import { AppNavigation } from "../../models/navigation-graph.js";
-import { Scenario } from "../../models/scenarios/scenario-info.js";
+import { UserJourney } from "../../models/user-journeys/user-journey-info.js";
 
 const HEX8 = /__(?:[0-9a-f]{8})(?=($|\/))/i;
 
@@ -11,9 +11,9 @@ function baseId(id: string): string {
     return id.replace(HEX8, "");
 }
 
-export function validateScenarioArtifacts(
+export function validateUserJourneyArtifacts(
     graph: AppNavigation,
-    scenarios: Scenario[],
+    journeys: UserJourney[],
     sampleLimit = 10
 ): void {
     const nodeIds = new Set(graph.nodes.map(n => n.id));
@@ -32,8 +32,8 @@ export function validateScenarioArtifacts(
         { stepType: string; nodeId: string; suggested?: string; ambiguous?: string[] }
     > = [];
 
-    for (const s of scenarios) {
-        for (const st of s.steps) {
+    for (const j of journeys) {
+        for (const st of j.steps) {
             if (nodeIds.has(st.nodeId)) continue;
 
             missing++;
@@ -52,7 +52,7 @@ export function validateScenarioArtifacts(
 
     if (missing > 0) {
         logger.warn(
-            "[ScenarioValidator] %d step nodeIds are not present in the navigation graph. Showing up to %d examples:",
+            "[UserJourneyValidator] %d step nodeIds are not present in the navigation graph. Showing up to %d examples:",
             missing, Math.min(sampleLimit, examples.length)
         );
         for (const ex of examples.slice(0, sampleLimit)) {
@@ -65,34 +65,34 @@ export function validateScenarioArtifacts(
             }
         }
     } else {
-        logger.info("[ScenarioValidator] All scenario step nodeIds are aligned with the navigation graph.");
+        logger.info("[UserJourneyValidator] All user journey step nodeIds are aligned with the navigation graph.");
     }
 
-    // Sanity: tail type vs node type (nice-to-have; you already pass this)
+    // Sanity: tail type vs node type
     let typeMismatch = 0;
-    for (const s of scenarios) {
-        const tail = s.steps[s.steps.length - 1];
+    for (const j of journeys) {
+        const tail = j.steps[j.steps.length - 1];
         const n = graph.nodes.find(n => n.id === tail.nodeId);
         if (n && n.type !== tail.stepType) {
             typeMismatch++;
             logger.warn(
-                "[ScenarioValidator] tail type mismatch: scenario=%s stepType=%s graphType=%s id=%s",
-                s.id, tail.stepType, n.type, tail.nodeId
+                "[UserJourneyValidator] tail type mismatch: journey=%s stepType=%s graphType=%s id=%s",
+                j.id, tail.stepType, n.type, tail.nodeId
             );
         }
     }
     if (typeMismatch === 0) {
-        logger.debug("[ScenarioValidator] No tail type mismatches.");
+        logger.debug("[UserJourneyValidator] No tail type mismatches.");
     }
 
     let baseLookingWidgets = 0;
-    for (const s of scenarios) {
-        for (const st of s.steps) {
+    for (const j of journeys) {
+        for (const st of j.steps) {
             if (st.stepType === "widget" && !HEX8.test(st.nodeId)) baseLookingWidgets++;
         }
     }
-    
+
     if (baseLookingWidgets) {
-        logger.debug("[ScenarioValidator] %d widget steps look like base ids (no hex suffix).", baseLookingWidgets);
+        logger.debug("[UserJourneyValidator] %d widget steps look like base ids (no hex suffix).", baseLookingWidgets);
     }
 }

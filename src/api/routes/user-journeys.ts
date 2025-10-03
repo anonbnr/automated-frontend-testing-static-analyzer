@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// api/routes/scenarios.ts
+// api/routes/user-journeys.ts
 //
-// Builds and returns all user-journey scenarios for an Angular workspace.
+// Builds and returns all user journeys for an Angular workspace.
 //
-//   POST /scenarios
+//   POST /user-journeys
 //   ---------------
 //   Body:
 //     {
@@ -13,16 +13,16 @@
 //     }
 //
 //   200 OK:
-//     { success: true, scenarios: Scenario[] }
+//     { success: true, journeys: UserJourneys[] }
 //
 //   4xx/5xx with a concise error message otherwise.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Request, Response, Router } from "express";
 import { performance } from "node:perf_hooks";
-import { FanoutMode } from "../../builders/scenarios/scenario-processors.js";
+import { FanoutMode } from "../../builders/user-journeys/user-journey-processors.js";
 import logger from "../../logging/logger.js";
-import { ExtractOptions, ScenarioExtractor } from "../../orchestrators/scenario-extractor.js";
+import { ExtractOptions, UserJourneyExtractor } from "../../orchestrators/user-journey-extractor.js";
 import { resolveTsConfig } from "../utils.js";
 
 const router = Router();
@@ -64,9 +64,9 @@ function parseBody(body: any): { projectRoot: string; opts: ExtractOptions } {
 }
 
 /**
- * POST /scenarios
+ * POST /user-journeys
  *
- * Builds and returns all user‐journey scenarios for an Angular app.
+ * Builds and returns all user journeys for an Angular app.
  */
 router.post("/", async (req: Request, res: Response) => {
     const started = performance.now();
@@ -76,35 +76,35 @@ router.post("/", async (req: Request, res: Response) => {
 
         const tsConfig = resolveTsConfig(projectRoot);
         if (!tsConfig) {
-            logger.warn("[POST /scenarios] tsconfig.json not found under %s", projectRoot);
+            logger.warn("[POST /user-journeys] tsconfig.json not found under %s", projectRoot);
             return res
                 .status(400)
                 .json({ success: false, error: "tsconfig.json not found in projectRoot" });
         }
 
         logger.info(
-            "[POST /scenarios] Extracting (root=%s, fanout=%s, maxDepth=%s)",
+            "[POST /user-journeys] Extracting (root=%s, fanout=%s, maxDepth=%s)",
             projectRoot,
             opts.fanoutMode ?? "primary",
             opts.maxDepth ?? "-"
         );
 
-        const extractor = new ScenarioExtractor(tsConfig);
+        const extractor = new UserJourneyExtractor(tsConfig);
         const registry = await extractor.extract(opts);
-        const scenarios = registry.getAll();
+        const journeys = registry.getAll();
 
         // Response headers for observability and cache behavior
         res.setHeader("Cache-Control", "no-store");
-        res.setHeader("X-Scenarios-Count", String(scenarios.length));
+        res.setHeader("X-User-Journeys-Count", String(journeys.length));
         res.setHeader("X-Analyzer-DurationMs", (performance.now() - started).toFixed(1));
 
-        return res.status(200).json({ success: true, scenarios });
+        return res.status(200).json({ success: true, journeys });
     } catch (err: any) {
         const status = Number.isInteger(err?.status) ? err.status : 500;
         const msg =
-            status === 400 ? err?.message || "Bad request" : err?.message || "Failed to extract scenarios";
+            status === 400 ? err?.message || "Bad request" : err?.message || "Failed to extract user journeys";
 
-        logger.error("[POST /scenarios] Error: %o", err);
+        logger.error("[POST /user-journeys] Error: %o", err);
         return res.status(status).json({ success: false, error: msg });
     }
 });

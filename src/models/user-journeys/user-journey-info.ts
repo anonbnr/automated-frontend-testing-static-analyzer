@@ -1,21 +1,20 @@
-// src/models/scenario-info.ts
+// src/models/user-journeys/user-journey-info.ts
 /**
- * Scenario data model
+ * User Journey data model
  * ===================
- * A *scenario* captures one user journey as an ordered stream of steps (U),
+ * A user journey is defined as an ordered stream of steps (U),
  * optionally coupled with a *pruned path* (P) that pins a subgraph authored in the UI.
  *
  * Design goals
  * ------------
  * - Preserve **all interactions** in order (for replay/analytics), but compute
  *   success/intent from the **terminal** step only.
- * - Keep every `nodeId` aligned with the **navigation graph ids**.
  * - Keep the model UI-friendly via `metadata` (small, optional, never required).
  *
  * Invariants
  * ----------
- * - `ScenarioStep.nodeId` is the canonical id from the navigation graph.
- * - `ScenarioStep.via` is set **only** on 'interaction' steps and is a user/nav event
+ * - `UserJourneyStep.id` is the canonical id from the navigation graph.
+ * - `UserJourneyStep.via` is set **only** on 'interaction' steps and is a user/nav event
  *   (e.g. 'click' | 'input' | 'change' | 'submit' | 'routerLink' | 'href' | 'static-redirect').
  * - Error sentinels use the canonical id '/virtual/error' and may appear as a final
  *   step of type 'virtual-route' or 'backend'. `success` is false when the last step
@@ -36,7 +35,7 @@ import { NavEventType, UserEventType } from "../event-info.js";
 import { GraphRelationType } from "../navigation-graph.js";
 
 /** Discrete step kinds in a user journey. Mirrors graph node kinds + "interaction". */
-export type ScenarioStepType =
+export type UserJourneyStepType =
     | 'module'
     | 'route'             // internal route ("/users", "/posts/:id", …)
     | 'external-route'    // external-route (http/https)
@@ -50,9 +49,9 @@ export type ScenarioStepType =
  * One atomic step in the user journey.
  * Use `metadata` for optional, UI-facing context (diffs, validation rules, etc.).
  */
-export interface ScenarioStep {
+export interface UserJourneyStep {
     /** The step kind. */
-    stepType: ScenarioStepType;
+    stepType: UserJourneyStepType;
 
     /**
     * The node ID (exactly as used in the navigation graph):
@@ -86,11 +85,11 @@ export interface PrunedPath {
 }
 
 /**
- * Full scenario artifact S = (P, U) + authoring metadata.
+ * Full user journey artifact (P, U) + authoring metadata.
  * `intent` and `success` are derived fields filled by the builder pipeline.
  */
-export interface Scenario {
-    /** Stable scenario id (auto-generated). */
+export interface UserJourney {
+    /** Stable user journey id (auto-generated). */
     id: string;
 
     /** The module we started in (usually "AppModule"). */
@@ -103,7 +102,7 @@ export interface Scenario {
     projectRoot?: string;
 
     /** The ordered list of steps (U). */
-    steps: ScenarioStep[];
+    steps: UserJourneyStep[];
 
     /** Optional author-provided pruned path (P). */
     path?: PrunedPath;
@@ -111,63 +110,62 @@ export interface Scenario {
     /** High-level bucket, typically derived from the last route. */
     intent?: string;
 
-    /** True iff the scenario does not end on '/virtual/error'. */
+    /** True iff the user journey does not end on '/virtual/error'. */
     success?: boolean;
 }
 
 /**
- * Tiny in-memory registry of scenarios, addressed by stable id.
+ * Tiny in-memory registry of user journeys, addressed by stable id.
  * NOTE: This does not dedupe by content, only by id.
  */
-export class ScenarioRegistry {
-    private scenarios = new Map<string, Scenario>();
+export class UserJourneyRegistry {
+    private journeys = new Map<string, UserJourney>();
 
-    constructor(initial: Scenario[] = []) {
+    constructor(initial: UserJourney[] = []) {
         for (const s of initial) this.add(s);
     }
 
-    /** Add or replace a scenario by its id. */
-    add(s: Scenario): void {
-        // this.scenarios.set(scenario.id, scenario);
-        const exists = this.scenarios.has(s.id);
-        this.scenarios.set(s.id, s);
+    /** Add or replace a user journey by its id. */
+    add(j: UserJourney): void {
+        const exists = this.journeys.has(j.id);
+        this.journeys.set(j.id, j);
 
         if (exists)
-            logger.warn(`[ScenarioRegistry] Replaced existing scenario id=${s.id}`);
+            logger.warn(`[UserJourneyRegistry] Replaced existing user journey id=${j.id}`);
     }
 
-    /** Retrieve a scenario by its unique id (or undefined). */
-    getById(id: string): Scenario | undefined {
-        return this.scenarios.get(id);
+    /** Retrieve a user journey by its unique id (or undefined). */
+    getById(id: string): UserJourney | undefined {
+        return this.journeys.get(id);
     }
 
-    /** All scenarios, in insertion order. */
-    getAll(): Scenario[] {
-        return Array.from(this.scenarios.values());
+    /** All user journeys, in insertion order. */
+    getAll(): UserJourney[] {
+        return Array.from(this.journeys.values());
     }
 
-    /** True iff a scenario with this id exists. */
+    /** True iff a user journey with this id exists. */
     has(id: string): boolean {
-        return this.scenarios.has(id);
+        return this.journeys.has(id);
     }
 
-    /** Remove a scenario by id; returns true if one existed. */
+    /** Remove a user journey by id; returns true if one existed. */
     remove(id: string): boolean {
-        return this.scenarios.delete(id);
+        return this.journeys.delete(id);
     }
 
-    /** Return the number of scenarios in the registry. */
+    /** Return the number of user journeys in the registry. */
     size(): number {
-        return this.scenarios.size;
+        return this.journeys.size;
     }
 
     /** Clear the registry. */
     clear(): void {
-        this.scenarios.clear();
+        this.journeys.clear();
     }
 
     /** Sorted copy (lexicographically by id). */
-    toArray(): Scenario[] {
-        return [...this.scenarios.values()].sort((a, b) => a.id.localeCompare(b.id));
+    toArray(): UserJourney[] {
+        return [...this.journeys.values()].sort((a, b) => a.id.localeCompare(b.id));
     }
 }

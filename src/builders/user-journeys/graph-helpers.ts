@@ -1,4 +1,4 @@
-// src/builders/scenarios/graph-helpers.ts
+// src/builders/user-journeys/graph-helpers.ts
 /**
  * graph-helpers
  * -------------
@@ -7,14 +7,14 @@
  *  - node map & root module detection
  *  - widget path enumeration (component/widget subtree)
  *  - transition queries & deterministic sort
- *  - nodeType→Scenario terminal mapping
+ *  - nodeType→UserJourney terminal mapping
  *  - event extraction from transitions (service-call → source event)
  *
- * This class contains *no* scenario semantics; it abstracts the graph only.
+ * This class contains *no* user journey semantics; it abstracts the graph only.
  */
 
 import { AppNavigation, GraphEdge, GraphNode, GraphTransition } from "../../models/navigation-graph.js";
-import { TerminalNodeKind } from "../../models/scenarios/scenario-constants.js";
+import { TerminalNodeKind } from "../../models/user-journeys/user-journey-constants.js";
 import { WidgetPathInfo } from "../../models/widget-info.js";
 
 /**
@@ -40,9 +40,6 @@ export class GraphLookups {
         if (!root) throw new Error("Root module not found in navigation graph");
         this.rootModuleId = root.id;
     }
-
-    /** Strip Angular hex suffixes to keep ids stable across builds. */
-    // canonicalize = (id: string) => id.replace(/__([0-9a-f]{8})(?=($|\/))/g, "");
 
     /**
     * Enumerate all widget paths starting at `parentId`.
@@ -77,7 +74,7 @@ export class GraphLookups {
         (this.nav.transitions as GraphTransition[]).filter(t => t.from === id);
 
     /** Terminal checks/mapping used by the assembler. */
-    asScenarioTerminal(nodeType: GraphNode["type"]): TerminalNodeKind {
+    asUserJourneyTerminal(nodeType: GraphNode["type"]): TerminalNodeKind {
         switch (nodeType) {
             case "route":
             case "external-route":
@@ -88,14 +85,16 @@ export class GraphLookups {
                 return "virtual-route";
         }
     }
+
     isTerminal(n?: GraphNode): n is GraphNode & { type: TerminalNodeKind } {
         return !!n && (n.type === "route" || n.type === "external-route" || n.type === "backend" || n.type === "virtual-route");
     }
+
     isBackend(n?: GraphNode): boolean { return !!n && n.type === "backend"; }
     isVirtual(n?: GraphNode): boolean { return !!n && n.type === "virtual-route"; }
 
     /**
-    * Stable ordering for transitions to make scenario IDs deterministic
+    * Stable ordering for transitions to make user journey IDs deterministic
     * (important for regression diffs and caching).
     */
     byDeterministicEdge(a: GraphTransition, b: GraphTransition): number {

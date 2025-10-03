@@ -1,17 +1,17 @@
-// src/builders/scenarios/scenario-assembler.ts
+// src/builders/user-journeys/user-journey-assembler.ts
 /**
- * ScenarioAssembler
+ * UserJourneyAssembler
  * -----------------
  * Declarative, reusable builder that:
  *  - stages module/route/component,
  *  - walks a widget path, interleaving per-widget metadata and *optional* non-terminal effects,
  *  - recognizes submit-button → form chains,
- *  - emits one scenario per terminal edge (route/external/backend/virtual).
+ *  - emits one user journey per terminal edge (route/external/backend/virtual).
  *  - avoids duplicate interaction/terminal pairs.
  */
 
 import logger from "../../logging/logger.js";
-import { Scenario, ScenarioStep, ScenarioStepType } from "../../models/scenarios/scenario-info.js";
+import { UserJourney, UserJourneyStep, UserJourneyStepType } from "../../models/user-journeys/user-journey-info.js";
 import { GraphLookups } from "./graph-helpers.js";
 
 /**
@@ -19,22 +19,22 @@ import { GraphLookups } from "./graph-helpers.js";
  * ---------------
  * - prefixSteps: absolute steps placed before any widget steps (e.g., [module, route, component]).
  * - widgetPath: ordered list of widget ids (leaf last).
- * - rootModuleId: used to derive stable scenario ids.
+ * - rootModuleId: used to derive stable user journey ids.
  */
 export interface AssembleContext {
     // absolute prefix steps (e.g., module/route or module/app-root/component)
-    prefixSteps: ScenarioStep[];
+    prefixSteps: UserJourneyStep[];
     // widget path to traverse (IDs in order)
     widgetPath: string[];
-    // moduleId for scenario root
+    // moduleId for user journey root
     rootModuleId: string;
 }
 
-export class ScenarioAssembler {
+export class UserJourneyAssembler {
     constructor(private g: GraphLookups) { }
 
     /**
-    * Build 1..N scenarios from one widget path:
+    * Build 1..N user journeys from one widget path:
     * 1) Stage prefix + widget steps with metadata.
     * 2) For each widget (non-leaf, non-form), optionally attach ONE inline *virtual* effect.
     *    (Skip backends here and skip all effects on leaf/form to avoid duplicates.)
@@ -42,7 +42,7 @@ export class ScenarioAssembler {
     * 4) For each terminal edge, add a final interaction (unless already *submit* via a trigger) + terminal step.
     * 5) Construct a stable id: <rootModuleId> → <path[via]> → <dest>.
     */
-    assemble(ctx: AssembleContext): Scenario[] {
+    assemble(ctx: AssembleContext): UserJourney[] {
         const staged = [...ctx.prefixSteps];
         let submitFormId: string | undefined;
 
@@ -67,7 +67,7 @@ export class ScenarioAssembler {
                 const toNode = this.g.nodeMap.get(submitEdge.to);
                 if (toNode?.type === "widget") {
                     // Only record submit on the trigger→form edge; do NOT record submit on the form itself.
-                    logger.debug("[ScenarioAssembler] submit chain: trigger=%s → form=%s", wid, submitEdge.to);
+                    logger.debug("[UserJourneyAssembler] submit chain: trigger=%s → form=%s", wid, submitEdge.to);
                     staged.push(this._step("interaction", wid, { via: "submit" }));
                     submitFormId = submitEdge.to;
                 }
@@ -82,8 +82,8 @@ export class ScenarioAssembler {
             .filter((t) => this.g.isTerminal(this.g.nodeMap.get(t.to)))
             .sort(this.g.byDeterministicEdge);
 
-        // 4) One scenario per terminal edge; add a final interaction unless already covered by trigger submit.
-        const scenarios: Scenario[] = [];
+        // 4) One user journey per terminal edge; add a final interaction unless already covered by trigger submit.
+        const journeys: UserJourney[] = [];
         for (const t of terminalEdges) {
             const steps = [...staged];
 
@@ -98,7 +98,7 @@ export class ScenarioAssembler {
             // Always add the terminal step (backend/route/virtual/external-route).
             const dest = this.g.nodeMap.get(t.to)!;
             steps.push(
-                this._step(this.g.asScenarioTerminal(dest.type), t.to, { metadata: t.metadata })
+                this._step(this.g.asUserJourneyTerminal(dest.type), t.to, { metadata: t.metadata })
             );
 
             // Stable id: <root> → <path[via]> → <dest>
@@ -108,24 +108,24 @@ export class ScenarioAssembler {
                 .filter(st => st.stepType === "route" || st.stepType === "component")
                 .map(st => st.nodeId);
             const scopeId = scopeParts.join("/");
-            
+
             // [root, scopeId, `${pathId}[${viaTag}]`, t.to]
-            const scenarioId = [ctx.rootModuleId, scopeId, `${pathId}[${viaTag}]`, t.to].join("→");
+            const journeyId = [ctx.rootModuleId, scopeId, `${pathId}[${viaTag}]`, t.to].join("→");
 
-            logger.debug("[ScenarioAssembler] scenario=%s (origin=%s, via=%s, dest=%s)",
-                scenarioId, terminalOrigin, viaTag, t.to);
+            logger.debug("[UserJourneyAssembler] journey=%s (origin=%s, via=%s, dest=%s)",
+                journeyId, terminalOrigin, viaTag, t.to);
 
-            scenarios.push({
+            journeys.push({
                 rootModule: ctx.rootModuleId,
-                id: scenarioId,
+                id: journeyId,
                 steps,
             });
         }
-        return scenarios;
+        return journeys;
     }
 
     /** Avoid pushing the same interaction twice in a row (same nodeId + via + shallow metadata signature). */
-    private _pushIfNotDuplicate(steps: ScenarioStep[], next: ScenarioStep) {
+    private _pushIfNotDuplicate(steps: UserJourneyStep[], next: UserJourneyStep) {
         const last = steps[steps.length - 1];
         if (!last || last.stepType !== "interaction" || next.stepType !== "interaction") {
             steps.push(next);
@@ -149,8 +149,8 @@ export class ScenarioAssembler {
         if (!(sameNode && sameVia && sameMeta)) steps.push(next);
     }
 
-    /** Small helper to produce a ScenarioStep with optional metadata. */
-    private _step(stepType: ScenarioStepType, id: string, extra?: Partial<ScenarioStep>): ScenarioStep {
+    /** Small helper to produce a UserJourneyStep with optional metadata. */
+    private _step(stepType: UserJourneyStepType, id: string, extra?: Partial<UserJourneyStep>): UserJourneyStep {
         return { stepType, nodeId: id, ...(extra ?? {}) };
     }
 }

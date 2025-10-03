@@ -1,4 +1,4 @@
-// src/builders/scenarios/intent-resolver.ts
+// src/builders/user-journeys/intent-resolver.ts
 /**
  * intent-resolver
  * ---------------
@@ -9,7 +9,7 @@ import { RouteMap } from "../../models/route-info.js";
 
 /**
  * Converts a route path ("/posts", "/users/:id", …) into a human-friendly label.
- * The intent is used to bucket scenarios in the UI.
+ * The intent is used to bucket user journeys in the UI.
  */
 export interface IntentResolver {
     resolve(route: string): string;

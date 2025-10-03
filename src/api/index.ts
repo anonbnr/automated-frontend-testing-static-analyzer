@@ -18,7 +18,7 @@ import componentsRouter from './routes/components.js';
 import graphRouter from './routes/graph.js';
 import modulesRouter from './routes/modules.js';
 import routesRouter from './routes/routes.js';
-import scenarioRouter from './routes/scenarios.js';
+import userJourneyRouter from './routes/user-journeys.js';
 import templateRouter from './routes/template.js';
 import widgetIdsRouter from './routes/widget-ids.js';
 import widgetsRouter from './routes/widgets.js';
@@ -47,7 +47,7 @@ const ROUTES: Array<[path: string, router: any]> = [
     ["/widget-ids", widgetIdsRouter],
     ["/business-logic", logicRouter],
     ["/graph", graphRouter],
-    ["/scenarios", scenarioRouter],
+    ["/user-journeys", userJourneyRouter],
 ];
 
 for (const [path, router] of ROUTES) app.use(path, router);

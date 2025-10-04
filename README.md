@@ -1,5 +1,5 @@
 # Static Analyzer for Automated Functional Testing of Frontend Web Applications
-A core part of our **Automation Framework for Functional Testing**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph** and derive **user journeys**.
+A core part of our **Automation Framework for Functional Testing**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph**, derive **user journeys**, capture **screenshots** of the journeys' SPA routes for scenario previews using [Puppeteer](https://pptr.dev/).
 
 - **Routes** & redirects  
 - **NgModules** & component declarations  
@@ -8,6 +8,7 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
 - **Event bindings** → handler call graphs (`router.navigate`, service calls, custom logic)  
 - **Form validation rules** & **submission triggers**  
 - **User Journeys** (module/route/component/widget/interaction → terminal outcomes)
+- **Screenshots** (headless capture per route; ready/waiting/capturing/missing states)
 
 ---
 
@@ -51,7 +52,12 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
      - **Fanout** options: keep siblings (primary) or **collapse** backend tails  
      - `intent` (human label) derived from route titles/paths; `success` computed from error sentinels  
    - Validation ensures journey step IDs align with the graph
-7) **Express-based REST API**  
+7) **Screenshots Capture**
+   - headless **Puppeteer** captures per route
+   - stored on disk and retrievable via public GET URLs.
+   - status surfaces `ready | capturing | waiting | missing`.
+8) **Express-based REST API**  
+   - **GET**  `/healthz`           → health check
    - **POST** `/modules`           → all NgModule metadata (with lazy flags)  
    - **POST** `/components`        → all ComponentInfo (selectors, widgets, nested selectors)  
    - **POST** `/routes`            → routes, redirects, component roles  
@@ -61,77 +67,89 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
    - **POST** `/business-logic`    → widget→event call graphs  
    - **POST** `/graph`             → full `AppNavigation` multigraph  
    - **POST** `/user-journeys`     → user journeys
-   - **GET**  `/healthz`           → health check
+   - **POST** `/screenshots/:analysisId/capture`                 → captures route(s) screenshot(s) for a journey in a given analysis
+   - **POST** `/screenshots/:analysisId/status`                  → status of route(s) screenshot(s) for a journey in a given analysis
+   - **GET** `/screenshots/:analysisId/:journeyId/:route(*)`     → retrieves route(s) screenshot(s) for a journey in a given analysis
 
 ---
 
 ## 📁 Project Structure
 ```plaintext
 automated-frontend-testing-static-analyzer/
-├── src/
-│   ├── api/
-│   │   ├── middleware.ts
-│   │   ├── routes/
-│   │   │   ├── business-logic.ts
-│   │   │   ├── components.ts
-│   │   │   ├── graph.ts
-│   │   │   ├── modules.ts
-│   │   │   ├── routes.ts
-│   │   │   ├── template.ts
-│   │   │   ├── user-journeys.ts
-│   │   │   ├── widget-ids.ts
-│   │   │   └── widgets.ts
-│   │   └── index.ts
-│   ├── analyzers/
-│   │   ├── business-logic/
-│   │   │   ├── logic-analyzer.ts
-│   │   │   └── logic-utils.ts
-│   │   ├── routes/
-│   │   │   ├── route-analyzer.ts
-│   │   │   └── route-utils.ts
-│   │   └── template/
-│   │       ├── template-analyzer.ts
-│   │       ├── template-utils.ts
-│   │       └── widgets/
-│   │           ├── widget-id-generator.ts
-│   │           ├── widget-processor.ts
-│   │           └── widget-utils.ts
-│   ├── builders/
-│   │   ├── component-registry-builder.ts
-│   │   ├── module-registry-builder.ts
-│   │   ├── navigation-graph-builder.ts
-│   │   └── user-journeys/
-│   │       ├── graph-helpers.ts
-│   │       ├── intent-labels.ts
-│   │       ├── intent-resolver.ts
-│   │       ├── user-journey-artifact-validator.ts
-│   │       ├── user-journey-assembler.ts
-│   │       ├── user-journey-processors.ts
-│   │       └── user-journey-registry-builder.ts
-│   ├── orchestrators/
-│   │   ├── static-analyzer.ts
-│   │   └── user-journey-extractor.ts
-│   ├── parsers/
-│   │   ├── ast-utils.ts
-│   │   └── template-parser.ts
-│   ├── models/
-│   │   ├── analyzer-config.ts
-│   │   ├── component-info.ts
-│   │   ├── event-info.ts
-│   │   ├── module-info.ts
-│   │   ├── navigation-graph.ts
-│   │   ├── route-info.ts
-│   │   ├── user-journeys/
-│   │   │   ├── user-journey-constants.ts
-│   │   │   └── user-journey-info.ts
-│   │   └── widget-info.ts
-│   └── logging/
-│       └── logger.ts
-├── package.json
-├── tsconfig.json
-├── nodemon.json
-├── .gitignore
-└── LICENSE
+automated-frontend-testing-static-analyzer/
+├─ src/
+│  ├─ api/                                 # Express HTTP layer
+│  │  ├─ env.ts                            # Centralized .env loader + typed env helpers
+│  │  ├─ index.ts                          # App bootstrap; registers routers; uses BACKEND_PORT
+│  │  ├─ middleware.ts                     # CORS, JSON body, error handler
+│  │  ├─ utils.ts                          # Path helpers (platform-root resolvers, tsconfig lookup)
+│  │  └─ routes/
+│  │     ├─ business-logic.ts              # POST /business-logic
+│  │     ├─ components.ts                  # POST /components
+│  │     ├─ graph.ts                       # POST /graph
+│  │     ├─ modules.ts                     # POST /modules
+│  │     ├─ routes.ts                      # POST /routes
+│  │     ├─ screenshots.ts                 # POST /screenshots: status, capture, GET/ screenshot image
+│  │     ├─ template.ts                    # POST /template
+│  │     ├─ user-journeys.ts               # POST /user-journeys
+│  │     ├─ widget-ids.ts                  # POST /widget-ids
+│  │     └─ widgets.ts                     # POST /widgets
+│  ├─ analyzers/                           # Code that inspects source & templates
+│  │  ├─ business-logic/
+│  │  │  ├─ logic-analyzer.ts              # ts-morph walker for call graphs
+│  │  │  └─ logic-utils.ts                 # AST helpers
+│  │  ├─ routes/
+│  │  │  ├─ route-analyzer.ts              # Router config discovery
+│  │  │  └─ route-utils.ts                 # Helpers for paths/redirects
+│  │  └─ template/
+│  │     ├─ template-analyzer.ts           # Template parsing + widget extraction
+│  │     ├─ template-utils.ts              # Template helpers
+│  │     └─ widgets/
+│  │        ├─ widget-id-generator.ts      # Stable, short widget IDs
+│  │        ├─ widget-processor.ts         # Node → WidgetInfo
+│  │        └─ widget-utils.ts             # Misc widget helpers
+│  ├─ builders/                            # Builders assembling higher-level artifacts
+│  │  ├─ component-registry-builder.ts     # Catalog of components
+│  │  ├─ module-registry-builder.ts        # Catalog of modules
+│  │  ├─ navigation-graph-builder.ts       # AppNavigation multigraph
+│  │  └─ user-journeys/
+│  │     ├─ graph-helpers.ts               # Graph traversal helpers
+│  │     ├─ intent-labels.ts               # Route → human-readable intent
+│  │     ├─ intent-resolver.ts             # Intent derivation
+│  │     ├─ user-journey-artifact-validator.ts # Journey integrity checks
+│  │     ├─ user-journey-assembler.ts      # Build journeys from graph
+│  │     ├─ user-journey-processors.ts     # Post-processing
+│  │     └─ user-journey-registry-builder.ts# Registry + indexing
+│  ├─ orchestrators/                       # High-level workflows
+│  │  ├─ static-analyzer.ts                # End-to-end static analysis orchestrator
+│  │  └─ user-journey-extractor.ts         # Graph → journeys pipeline
+│  ├─ parsers/
+│  │  ├─ ast-utils.ts                      # TS/AST utilities
+│  │  └─ template-parser.ts                # DOM/HTML parsing utilities
+│  ├─ services/
+│  │  └─ screenshot.service.ts             # Headless capture, on-disk status/markers
+│  ├─ models/
+│  │  ├─ analyzer-config.ts
+│  │  ├─ component-info.ts
+│  │  ├─ event-info.ts
+│  │  ├─ module-info.ts
+│  │  ├─ navigation-graph.ts
+│  │  ├─ route-info.ts
+│  │  ├─ screenshot-info.ts                # Types for screenshot status items
+│  │  ├─ widget-info.ts
+│  │  └─ user-journeys/
+│  │     ├─ user-journey-constants.ts
+│  │     └─ user-journey-info.ts
+│  └─ logging/
+│     └─ logger.ts                         # Winston + rotate file logger
+├─ data/                                   # Ignored runtime artifacts
+│  └─ screenshots/                         # PNGs + marker files (sha1-bucketed)
+├─ package.json
+├─ tsconfig.json
+├─ nodemon.json
+├─ .env                                    # Optional env overrides (see below)
+├─ .gitignore
+└─ LICENSE
 ```
 
 ---
@@ -154,8 +172,38 @@ npm run dev
 
 ---
 
+## ⚙️ Configuration & Environment
+Create a `.env` in the backend root (same dir as `package.json`) or export env vars.
+
+```ini
+# Server
+BACKEND_PORT=3000           # fallback to PORT, else 3000
+
+# Screenshots storage
+BACKEND_SCREENSHOTS_STORAGE_DIR=data/screenshots
+# Screenshots base URL of the frontend-under-test; if omitted, derived from FRONTEND_PORT
+BACKEND_SCREENSHOTS_BASE_URL=http://localhost:4200
+# Used only to derive the above when BACKEND_SCREENSHOTS_BASE_URL is not set
+FRONTEND_PORT=4200
+```
+
+At startup, `src/api/env.ts` prints a one-line summary of resolved values.
+
+**Data layout:** screenshots are stored under
+`data/screenshots/<sha1(analysisId)>/<sha1(journeyId)>/<sha1(route)>.png`
+Marker files `.pending` / `.capturing` live alongside the PNG to reflect state.
+
+**Advanced (code-level) analyzer config** – `src/models/analyzer-config.ts`:
+* `backend.granularity`: `'single' | 'service' | 'method'` (default: `'method'`)
+* `backend.serviceCallerRe`: regex to detect backend callers (default matches `*Service`, `http`, `httpClient`, `api`)
+* `noise.methodNames` / `noise.freeFunctions`: filter Rx/plumbing/logging calls
+
+> Note: advanced config is currently wired through constructors (not via the REST API).
+
+---
+
 ## 🖥️ Running the API Server
-By default, the server listens on **port 3000** (override with `PORT`).
+By default, the server listens on **port 3000** (override with `BACKEND_PORT` or `PORT`).
 
 ```bash
 npm start
@@ -358,7 +406,7 @@ All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/yo
 
 ---
 
-### POST `/user-journeys`  ← **new**
+### POST `/user-journeys`
 Builds and returns user journeys from the navigation graph.
 
 **Request**
@@ -394,21 +442,61 @@ Builds and returns user journeys from the navigation graph.
 }
 ```
 
----
+### Screenshots API
+For **screenshots**, pass an `analysisId`, `journeyId`, and `routes[]`.
 
-## ⚙️ Configuration
-Create a `.env` (or export env vars):
 
-```bash
-PORT=3000
+
+> The service **does not** start your app. Ensure the SPA is reachable at `BACKEND_SCREENSHOTS_BASE_URL` (or pass `baseUrl`).
+
+#### POST `/screenshots/:analysisId/status`
+
+Body:
+
+```json
+{
+  "journeyId": "AppModule→/new-post/…",
+  "routes": ["/new-post", "/posts"]
+}
 ```
 
-**Advanced (code-level) analyzer config** – `src/models/analyzer-config.ts`:
-* `backend.granularity`: `'single' | 'service' | 'method'` (default: `'method'`)
-* `backend.serviceCallerRe`: regex to detect backend callers (default matches `*Service`, `http`, `httpClient`, `api`)
-* `noise.methodNames` / `noise.freeFunctions`: filter Rx/plumbing/logging calls
+Response:
 
-> Note: advanced config is currently wired through constructors (not via the REST API).
+```json
+{
+  "success": true,
+  "storageRoot": "…/data/screenshots",
+  "items": {
+    "/new-post": { "route": "/new-post", "id": "<sha1>", "status": "ready",    "filename": "/abs/…png", "url": "/screenshots/<aid>/<jid>/new-post" },
+    "/posts":    { "route": "/posts",    "id": "<sha1>", "status": "capturing","filename": "/abs/…png", "url": "/screenshots/<aid>/<jid>/posts" }
+  }
+}
+```
+
+#### POST `/screenshots/:analysisId/capture`
+
+Body:
+
+```json
+{
+  "journeyId": "AppModule→/new-post/…",
+  "routes": ["/new-post", "/posts"],
+  "baseUrl": "http://localhost:4200"   // optional override
+}
+```
+
+* `200` with same `items` shape as **status** (states updated to `ready` as they complete)
+* `503` if the frontend is not reachable (includes a helpful `hint`)
+
+#### GET `/screenshots/:analysisId/:journeyId/:route(*)`
+Serves the PNG for a logical SPA route. The `route` segment is the *logical path* (no leading slash in the URL; internally normalized).
+
+---
+
+## 🔐 Notes & Limits
+* Puppeteer runs in headless mode with animations/transitions disabled for stable visuals.
+* Designed for single instance. If you scale, guard `capture()` with your own queue/lock.
+* The `data/` directory is **git-ignored**.
 
 ---
 

@@ -8,7 +8,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { existsSync } from "fs";
-import { join } from "path";
+import path, { join } from "path";
+import { fileURLToPath } from "url";
 
 /**
  * Resolve the path to `tsconfig.json` under the given project root.
@@ -19,4 +20,33 @@ import { join } from "path";
 export function resolveTsConfig(projectRoot: string): string | undefined {
     const tsConfigPath = join(projectRoot, 'tsconfig.json');
     return existsSync(tsConfigPath) ? tsConfigPath : undefined;
+}
+
+/**
+ * Walk upward from a starting directory to find a given file (e.g., ".env").
+ */
+function findUpFile(startDir: string, name: string): string | null {
+    let dir = startDir;
+    while (true) {
+        const candidate = path.join(dir, name);
+        if (existsSync(candidate)) return candidate;
+        const parent = path.dirname(dir);
+        if (parent === dir) return null;
+        dir = parent;
+    }
+}
+
+/**
+ * Resolve a possibly-relative path against the repo "platform root" (where .env is).
+ * If the env value is absolute, returns it as-is.
+ * If not provided, uses the given fallback (relative to platform root).
+ */
+export function resolveFromPlatformRoot(relOrAbs: string | undefined, fallbackRel: string): string {
+    const here = fileURLToPath(import.meta.url);
+    const start = path.dirname(here);
+    const envPath = findUpFile(start, '.env'); // your .env at repo root
+    const platformRoot = envPath ? path.dirname(envPath) : process.cwd();
+
+    const raw = (relOrAbs && relOrAbs.trim()) || fallbackRel;
+    return path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(platformRoot, raw);
 }

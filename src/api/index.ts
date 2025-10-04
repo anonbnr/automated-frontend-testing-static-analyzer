@@ -10,6 +10,8 @@
 //  - Starts the HTTP server
 // ──────────────────────────────────────────────────────────────────────────────
 
+import './env.js'; // .env is loaded and env is initialized first
+
 import express, { Express, Request, Response } from 'express';
 import logger from '../logging/logger.js';
 import { corsMiddleware, errorHandler, jsonBodyParser } from './middleware.js';
@@ -18,13 +20,14 @@ import componentsRouter from './routes/components.js';
 import graphRouter from './routes/graph.js';
 import modulesRouter from './routes/modules.js';
 import routesRouter from './routes/routes.js';
-import userJourneyRouter from './routes/user-journeys.js';
+import screenshotsRouter from './routes/screenshots.js';
 import templateRouter from './routes/template.js';
+import userJourneyRouter from './routes/user-journeys.js';
 import widgetIdsRouter from './routes/widget-ids.js';
 import widgetsRouter from './routes/widgets.js';
 
 const app: Express = express();
-const port = process.env.PORT ?? 3000;
+const port = Number(process.env.BACKEND_PORT ?? process.env.PORT ?? 3000);
 
 // ── GLOBAL MIDDLEWARE ─────────────────────────────────────────────────────────
 app.use(corsMiddleware);
@@ -48,6 +51,7 @@ const ROUTES: Array<[path: string, router: any]> = [
     ["/business-logic", logicRouter],
     ["/graph", graphRouter],
     ["/user-journeys", userJourneyRouter],
+    ["/screenshots", screenshotsRouter],
 ];
 
 for (const [path, router] of ROUTES) app.use(path, router);

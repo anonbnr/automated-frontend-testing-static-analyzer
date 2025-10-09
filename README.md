@@ -1,18 +1,19 @@
-# Static Analyzer for Automated Functional Testing of Frontend Web Applications
-A core part of our **Automation Framework for Functional Testing**, this tool performs deep **static analysis** of Angular applications to build a comprehensive **navigation graph**, derive **user journeys**, capture **screenshots** of the journeys' SPA routes for scenario previews using [Puppeteer](https://pptr.dev/).
+# SoftScanner Backend — Automated Frontend Functional Web Testing Analyzer (Node/TypeScript)
+The **SoftScanner Backend** is the analytical and service layer powering the [SoftScanner UI](https://github.com/anonbnr/automated-frontend-testing-ui).
+It exposes REST APIs that assist in automating **functional testing of frontend web applications**.
+It is written in **TypeScript** and runs on **Node.js**, combining static code analysis, dependency graph resolution, and browser automation.
+Concretely, it statically analyzes frontend codebases (with focus on Angular projects) to:
 
-- **Routes** & redirects  
-- **NgModules** & component declarations  
-- **Components** & their nested child selectors  
-- **Interactive widgets** (buttons, forms, inputs, anchors, Material controls)  
-- **Event bindings** → handler call graphs (`router.navigate`, service calls, custom logic)  
-- **Form validation rules** & **submission triggers**  
-- **User Journeys** (module/route/component/widget/interaction → terminal outcomes)
-- **Screenshots** (headless capture per route; ready/waiting/capturing/missing states)
+1. Extract **modules, routes, components, widgets, templates, and logic graphs**
+2. Produce a validator-annotated **navigation graph**
+3. Derive **user journeys**
+4. Capture **route screenshots**, and
+5. Parse and infer **StageAction DSL** for interaction staging.
 
 ---
 
 ## 🚀 Features
+### 🧩 Static Code Analysis
 1) **Module Discovery**  
    - Scans all `@NgModule` classes and tags lazy modules.
    - Classifies modules as **root**, **routing**, **external**, **global**, or **shared**.
@@ -36,46 +37,47 @@ A core part of our **Automation Framework for Functional Testing**, this tool pe
      - **Service/HTTP calls** (marked as backend interactions)  
    - Extracts form-control validators (`Validators.*`) and applies back to widgets.  
    - **Noise filtering** (Rx plumbing, logging, etc.) and configurable backend heuristics.
-5) **Navigation Graph Builder**  
-   - Builds a **multigraph** (`AppNavigation`) with:
-     - **Static edges** (`contains`, `imports`, `declares`)  
-     - **Dynamic transitions** (`click`, `routerLink`, `navigate*`, `href`, `lazy-load`, `static-redirect`, `service-call`)  
-   - **Nodes**: `module`, `route`, `component`, `widget`, `backend`, `external-route`, `virtual-route`  
-   - **Route node attributes**: `pathMatch`, `canActivate`, `canActivateChild`, `canLoad`, `resolve`, `data`  
-   - **Widget node attributes**: `attributes`, `events`, `widgetType`, `validationRules`, `triggersFormSubmission`  
-   - **Form submission modeling**: submit-trigger widget → `submit` → nearest ancestor `<form>`.  
-   - **Canonicalization** of navigation targets to known routes when possible.
-6) **User Journey Extraction**  
-   - Derives **user journeys** from the graph:
-     - Route-scoped & global header paths  
-     - One journey per terminal outcome: `route` | `external-route` | `backend` | `virtual-route`  
-     - **Fanout** options: keep siblings (primary) or **collapse** backend tails  
-     - `intent` (human label) derived from route titles/paths; `success` computed from error sentinels  
-   - Validation ensures journey step IDs align with the graph
-7) **Screenshots Capture**
-   - headless **Puppeteer** captures per route
-   - stored on disk and retrievable via public GET URLs.
-   - status surfaces `ready | capturing | waiting | missing`.
-8) **Express-based REST API**  
-   - **GET**  `/healthz`           → health check
-   - **POST** `/modules`           → all NgModule metadata (with lazy flags)  
-   - **POST** `/components`        → all ComponentInfo (selectors, widgets, nested selectors)  
-   - **POST** `/routes`            → routes, redirects, component roles  
-   - **POST** `/template`          → single ComponentInfo by selector  
-   - **POST** `/widgets`           → widget tree for one component  
-   - **POST** `/widget-ids`        → flattened widget IDs for one component
-   - **POST** `/business-logic`    → widget→event call graphs  
-   - **POST** `/graph`             → full `AppNavigation` multigraph  
-   - **POST** `/user-journeys`     → user journeys
-   - **POST** `/screenshots/:analysisId/capture`                 → captures route(s) screenshot(s) for a journey in a given analysis
-   - **POST** `/screenshots/:analysisId/status`                  → status of route(s) screenshot(s) for a journey in a given analysis
-   - **GET** `/screenshots/:analysisId/:journeyId/:route(*)`     → retrieves route(s) screenshot(s) for a journey in a given analysis
+
+---
+
+### 🕸 Navigation Graph Reconstruction
+ - Builds a **multigraph** (`AppNavigation`) with:
+   - **Static edges** (`contains`, `imports`, `declares`)  
+   - **Dynamic transitions** (`click`, `routerLink`, `navigate*`, `href`, `lazy-load`, `static-redirect`, `service-call`)  
+ - **Nodes**: `module`, `route`, `component`, `widget`, `backend`, `external-route`, `virtual-route`  
+ - **Route node attributes**: `pathMatch`, `canActivate`, `canActivateChild`, `canLoad`, `resolve`, `data`  
+ - **Widget node attributes**: `attributes`, `events`, `widgetType`, `validationRules`, `triggersFormSubmission`  
+ - **Form submission modeling**: submit-trigger widget → `submit` → nearest ancestor `<form>`.  
+ - **Canonicalization** of navigation targets to known routes when possible.
+
+---
+
+### 👣 User Journey Extraction
+ - Derives **user journeys** from the graph:
+   - Route-scoped & global header paths  
+   - One journey per terminal outcome: `route` | `external-route` | `backend` | `virtual-route`  
+   - **Fanout** options: keep siblings (primary) or **collapse** backend tails  
+   - `intent` (human label) derived from route titles/paths; `success` computed from error sentinels  
+ - Validation ensures journey step IDs align with the graph
+
+---
+
+### 📸 Screenshot Capture & Serving
+ - Uses **Puppeteer** to render and capture SPA routes.
+ - stored on disk under `data/screenshots` and retrievable via public GET URLs.
+ - status surfaces `ready | capturing | waiting | missing`.
+ - Supports API endpoints to check status, trigger capture, and serve PNG images.
+
+---
+
+### ⚙️ Environment-Driven Configuration
+* `.env` file manages backend/port setup, screenshot directories, and base URLs.
+* Uses a **typed env loader** (`api/env.ts`) to ensure robust startup validation.
 
 ---
 
 ## 📁 Project Structure
 ```plaintext
-automated-frontend-testing-static-analyzer/
 automated-frontend-testing-static-analyzer/
 ├─ src/
 │  ├─ api/                                 # Express HTTP layer
@@ -83,7 +85,8 @@ automated-frontend-testing-static-analyzer/
 │  │  ├─ index.ts                          # App bootstrap; registers routers; uses BACKEND_PORT
 │  │  ├─ middleware.ts                     # CORS, JSON body, error handler
 │  │  ├─ utils.ts                          # Path helpers (platform-root resolvers, tsconfig lookup)
-│  │  └─ routes/
+│  │  └─ routes/                           # Each domain served by a dedicated route file
+│  │     ├─ actions.ts                     # POST /actions endpoints (parse + infer)
 │  │     ├─ business-logic.ts              # POST /business-logic
 │  │     ├─ components.ts                  # POST /components
 │  │     ├─ graph.ts                       # POST /graph
@@ -94,11 +97,11 @@ automated-frontend-testing-static-analyzer/
 │  │     ├─ user-journeys.ts               # POST /user-journeys
 │  │     ├─ widget-ids.ts                  # POST /widget-ids
 │  │     └─ widgets.ts                     # POST /widgets
-│  ├─ analyzers/                           # Code that inspects source & templates
-│  │  ├─ business-logic/
+│  ├─ analyzers/                           # Low-level static analyzers
+│  │  ├─ business-logic/                   # Extracts event-handler graphs from AST
 │  │  │  ├─ logic-analyzer.ts              # ts-morph walker for call graphs
 │  │  │  └─ logic-utils.ts                 # AST helpers
-│  │  ├─ routes/
+│  │  ├─ routes/                           # Parses and validates Angular routing definitions
 │  │  │  ├─ route-analyzer.ts              # Router config discovery
 │  │  │  └─ route-utils.ts                 # Helpers for paths/redirects
 │  │  └─ template/
@@ -112,6 +115,8 @@ automated-frontend-testing-static-analyzer/
 │  │  ├─ component-registry-builder.ts     # Catalog of components
 │  │  ├─ module-registry-builder.ts        # Catalog of modules
 │  │  ├─ navigation-graph-builder.ts       # AppNavigation multigraph
+│  │  ├─ scenarios/                        # Scenario-level inference
+│  │  │  └─ action-inferer.ts              # Core inference engine for StageActions
 │  │  └─ user-journeys/
 │  │     ├─ graph-helpers.ts               # Graph traversal helpers
 │  │     ├─ intent-labels.ts               # Route → human-readable intent
@@ -121,10 +126,11 @@ automated-frontend-testing-static-analyzer/
 │  │     ├─ user-journey-processors.ts     # Post-processing
 │  │     └─ user-journey-registry-builder.ts# Registry + indexing
 │  ├─ orchestrators/                       # High-level workflows
-│  │  ├─ static-analyzer.ts                # End-to-end static analysis orchestrator
-│  │  └─ user-journey-extractor.ts         # Graph → journeys pipeline
-│  ├─ parsers/
+│  │  ├─ static-analyzer.ts                # End-to-end static project analysis orchestrator
+│  │  └─ user-journey-extractor.ts         # Drives user journey discovery (Graph → journeys pipeline)
+│  ├─ parsers/                             # Syntactic and semantic parsers
 │  │  ├─ ast-utils.ts                      # TS/AST utilities
+│  │  ├─ stage-action-dsl.ts               # DSL parser for scenario authoring
 │  │  └─ template-parser.ts                # DOM/HTML parsing utilities
 │  ├─ services/
 │  │  └─ screenshot.service.ts             # Headless capture, on-disk status/markers
@@ -137,6 +143,8 @@ automated-frontend-testing-static-analyzer/
 │  │  ├─ route-info.ts
 │  │  ├─ screenshot-info.ts                # Types for screenshot status items
 │  │  ├─ widget-info.ts
+│  │  ├─ scenarios/
+│  │  │  └─ stage-action.ts                # Type for action staging (StageActionKind, StageTarget, etc.)
 │  │  └─ user-journeys/
 │  │     ├─ user-journey-constants.ts
 │  │     └─ user-journey-info.ts
@@ -178,6 +186,7 @@ Create a `.env` in the backend root (same dir as `package.json`) or export env v
 ```ini
 # Server
 BACKEND_PORT=3000           # fallback to PORT, else 3000
+BACKEND_API_BASE_URL=http://localhost:3000 # base URL for the backend server
 
 # Screenshots storage
 BACKEND_SCREENSHOTS_STORAGE_DIR=data/screenshots
@@ -185,6 +194,15 @@ BACKEND_SCREENSHOTS_STORAGE_DIR=data/screenshots
 BACKEND_SCREENSHOTS_BASE_URL=http://localhost:4200
 # Used only to derive the above when BACKEND_SCREENSHOTS_BASE_URL is not set
 FRONTEND_PORT=4200
+
+# (Planned) backend LLM — off by default
+LLM_ENABLED=false
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4.1
+LLM_TIMEOUT_MS=30000
+LLM_MAX_TOKENS=4000
+LLM_RATE_LIMIT_PER_MIN=30
 ```
 
 At startup, `src/api/env.ts` prints a one-line summary of resolved values.
@@ -215,6 +233,27 @@ Health check:
 curl http://localhost:3000/healthz
 # -> { "ok": true }
 ```
+
+---
+
+## 🔌 REST API Reference
+Each endpoint accepts and returns JSON unless stated otherwise.
+
+| Method   | Endpoint                                        | Description                                                                       |
+| :------- | :---------------------------------------------- | :-------------------------------------------------------------------------------- |
+| **POST** | `/modules`                                      | Analyze the application’s modules and their roles.                                |
+| **POST** | `/components`                                   | Analyze components: templates, inputs/outputs, selectors.                         |
+| **POST** | `/routes`                                       | Extract routing configuration and metadata.                                       |
+| **POST** | `/widgets`                                      | Extract and classify widgets from component templates.                            |
+| **POST** | `/template`                                     | Template-level structural parsing.                                                |
+| **POST** | `/business-logic`                               | Discover event-to-handler connections within components.                          |
+| **POST** | `/graph`                                        | Generate a unified navigation graph across all layers.                            |
+| **POST** | `/user-journeys`                                | Infer high-level user journeys from the navigation graph.                         |
+| **POST** | `/screenshots/:analysisId/status`               | Return screenshot availability for all routes/journeys.                           |
+| **POST** | `/screenshots/:analysisId/capture`              | Launch Puppeteer capture jobs; returns status envelope.                           |
+| **GET**  | `/screenshots/:analysisId/:journeyId/:route(*)` | Serve existing screenshot PNG from disk.                                          |
+| **POST** | `/actions/parse`                                | Parse a StageAction DSL string into structured actions and diagnostics. |
+| **POST** | `/actions/infer`                                | Infer ordered StageActions from journey, graph, and widget IDs.         |
 
 ---
 
@@ -442,12 +481,73 @@ Builds and returns user journeys from the navigation graph.
 }
 ```
 
+### POST `/actions/parse`
+**Input**
+
+```json
+{
+  "script": "NAVIGATE /login\nINPUT email user@example.com\nSUBMIT"
+}
+```
+
+**Output**
+
+```json
+{
+  "success": true,
+  "actions": [
+    { "order": 0, "kind": "navigate", "target": { "type": "route", "id": "/login" } },
+    { "order": 1, "kind": "input", "target": { "type": "widget", "id": "email" }, "value": "user@example.com" },
+    { "order": 2, "kind": "submit", "target": { "type": "widget", "id": "form:login" } }
+  ],
+  "diagnostics": []
+}
+```
+
+**Notes**
+* Supports tokens: `NAVIGATE`, `CLICK`, `SUBMIT`, `INPUT`, `CHANGE`, `CHECK`, `UNCHECK`, `NOOP`.
+* Diagnostics array includes `{ line, column, message, severity }`.
+* Parsing is tolerant—invalid lines don’t abort parsing.
+
+---
+
+### POST `/actions/infer`
+**Input**
+
+```json
+{
+  "journey": { "id": "J-42", "steps": [ ... ] },
+  "graph": { ... },
+  "widgetIds": ["email", "password", "submit"]
+}
+```
+
+**Output**
+
+```json
+{
+  "success": true,
+  "actions": [
+    { "order": 0, "kind": "navigate", "target": { "type": "route", "id": "/login" } },
+    { "order": 1, "kind": "input", "target": { "type": "widget", "id": "email" }, "value": "" },
+    { "order": 2, "kind": "input", "target": { "type": "widget", "id": "password" }, "value": "" },
+    { "order": 3, "kind": "submit", "target": { "type": "widget", "id": "form:login" } }
+  ]
+}
+```
+
+**Notes**
+* Deterministic: same journey/graph always yields identical output.
+* Eliminates redundant navigations, form duplicates, and redirect sequences.
+* Provides a foundation for **Scenario Authoring** in the frontend.
+
+---
+
 ### Screenshots API
 For **screenshots**, pass an `analysisId`, `journeyId`, and `routes[]`.
 
-
-
-> The service **does not** start your app. Ensure the SPA is reachable at `BACKEND_SCREENSHOTS_BASE_URL` (or pass `baseUrl`).
+> The service **does not** start your app.
+> Ensure the SPA is reachable at `BACKEND_SCREENSHOTS_BASE_URL` (or pass `baseUrl`).
 
 #### POST `/screenshots/:analysisId/status`
 
@@ -493,10 +593,27 @@ Serves the PNG for a logical SPA route. The `route` segment is the *logical path
 
 ---
 
+## 🧩 Dependencies
+* **TypeScript** — for strong typing and AST manipulation.
+* **Express** — REST API framework.
+* **Puppeteer** — for headless browser rendering and screenshot capture.
+* **Node-Fetch** — for HTTP requests in utility modules.
+* **Dotenv** — environment configuration.
+* **UUID** — unique identifiers for analysis and screenshots.
+* **File system & path utilities** — custom wrappers under `api/utils.ts`.
+---
+
 ## 🔐 Notes & Limits
 * Puppeteer runs in headless mode with animations/transitions disabled for stable visuals.
 * Designed for single instance. If you scale, guard `capture()` with your own queue/lock.
 * The `data/` directory is **git-ignored**.
+
+---
+
+## 🧪 Roadmap
+- Backend LLM endpoints (journey refine, staging suggest, oracle/script gen).
+- Scenarios/Workflows storage & export (runnable Playwright/Puppeteer/Selenium).
+- Export caching and error envelopes with hint.
 
 ---
 

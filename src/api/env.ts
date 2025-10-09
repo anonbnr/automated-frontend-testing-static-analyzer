@@ -1,4 +1,4 @@
-// src/api/env.ts
+// api/env.ts
 // Centralized environment loading & helpers used across the API.
 // - Loads .env (once) before other modules read process.env
 // - Provides typed, post-processed values (booleans, numbers, defaults)
@@ -52,6 +52,6 @@ export const env = {
 };
 
 // Helpful one-time log summary
-console.info('[env] PORT=%d', env.PORT);
-console.info('[env] SCREENSHOTS_STORAGE_ROOT=%s', env.SCREENSHOTS_STORAGE_ROOT);
-console.info('[env] SCREENSHOTS_BASE_URL=%s', env.SCREENSHOTS_BASE_URL);
+// console.info('[env] PORT=%d', env.PORT);
+// console.info('[env] SCREENSHOTS_STORAGE_ROOT=%s', env.SCREENSHOTS_STORAGE_ROOT);
+// console.info('[env] SCREENSHOTS_BASE_URL=%s', env.SCREENSHOTS_BASE_URL);

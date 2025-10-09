@@ -1,4 +1,4 @@
-// src/builders/user-journeys/graph-helpers.ts
+// builders/user-journeys/graph-helpers.ts
 /**
  * graph-helpers
  * -------------

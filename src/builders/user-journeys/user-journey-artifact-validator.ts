@@ -1,4 +1,4 @@
-// src/builders/user-journeys/user-journey-artifact-validator.ts
+// builders/user-journeys/user-journey-artifact-validator.ts
 import logger from "../../logging/logger.js";
 import { AppNavigation } from "../../models/navigation-graph.js";
 import { UserJourney } from "../../models/user-journeys/user-journey-info.js";

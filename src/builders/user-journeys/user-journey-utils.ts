@@ -1,4 +1,4 @@
-// src/builders/user-journeys/user-journey-utils.ts
+// builders/user-journeys/user-journey-utils.ts
 /**
  * user-journey-utils
  * ------------------

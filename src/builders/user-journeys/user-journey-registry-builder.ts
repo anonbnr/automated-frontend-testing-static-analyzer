@@ -1,4 +1,4 @@
-// src/builders/user-journeys/user-journey-registry-builder.ts
+// builders/user-journeys/user-journey-registry-builder.ts
 /**
  * 
  * UserJourneyRegistryBuilder

@@ -1,4 +1,4 @@
-// src/models/user-journeys/user-journey-info.ts
+// models/user-journeys/user-journey-info.ts
 /**
  * User Journey data model
  * ===================

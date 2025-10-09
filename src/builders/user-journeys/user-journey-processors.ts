@@ -1,4 +1,4 @@
-// src/builders/user-journeys/user-journey-processors.ts
+// builders/user-journeys/user-journey-processors.ts
 /**
  * user-journey-processors
  * -------------------

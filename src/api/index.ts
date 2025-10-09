@@ -15,6 +15,7 @@ import './env.js'; // .env is loaded and env is initialized first
 import express, { Express, Request, Response } from 'express';
 import logger from '../logging/logger.js';
 import { corsMiddleware, errorHandler, jsonBodyParser } from './middleware.js';
+import actionsRouter from './routes/actions.js';
 import logicRouter from './routes/business-logic.js';
 import componentsRouter from './routes/components.js';
 import graphRouter from './routes/graph.js';
@@ -52,6 +53,7 @@ const ROUTES: Array<[path: string, router: any]> = [
     ["/graph", graphRouter],
     ["/user-journeys", userJourneyRouter],
     ["/screenshots", screenshotsRouter],
+    ["/actions", actionsRouter],
 ];
 
 for (const [path, router] of ROUTES) app.use(path, router);

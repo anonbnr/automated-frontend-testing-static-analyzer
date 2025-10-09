@@ -1,4 +1,4 @@
-// src/builders/user-journeys/user-journey-assembler.ts
+// builders/user-journeys/user-journey-assembler.ts
 /**
  * UserJourneyAssembler
  * -----------------

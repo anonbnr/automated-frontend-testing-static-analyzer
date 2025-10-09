@@ -1,4 +1,4 @@
-// src/builders/user-journeys/intent-labels.ts
+// builders/user-journeys/intent-labels.ts
 /**
  * intent-labels
  * -------------

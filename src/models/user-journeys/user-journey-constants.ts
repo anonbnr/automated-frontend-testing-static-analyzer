@@ -1,4 +1,4 @@
-// src/models/user-journeys/user-journey-constants.ts
+// models/user-journeys/user-journey-constants.ts
 /**
  * Constants & terminal kinds for user journeys.
  * Keep all canonicals here to avoid drift across modules.

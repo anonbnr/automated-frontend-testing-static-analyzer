@@ -1,4 +1,4 @@
-// src/builders/user-journeys/intent-resolver.ts
+// builders/user-journeys/intent-resolver.ts
 /**
  * intent-resolver
  * ---------------

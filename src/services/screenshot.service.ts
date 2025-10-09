@@ -43,8 +43,8 @@ export class ScreenshotService {
         this.storageRoot = opts.storageRoot;
         this.baseUrl = opts.baseUrl || 'http://localhost:4200';
 
-        logger.info('[ScreenshotService] storageRoot=%s, baseUrl=%s',
-            this.storageRoot, this.baseUrl);
+        // logger.info('[ScreenshotService] storageRoot=%s, baseUrl=%s',
+        //     this.storageRoot, this.baseUrl);
     }
 
     // ────────────────────────────────────────────────────────────────────────────

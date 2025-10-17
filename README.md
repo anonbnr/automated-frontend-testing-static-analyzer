@@ -2,6 +2,7 @@
 The **SoftScanner Backend** is the analytical and service layer powering the [SoftScanner UI](https://github.com/anonbnr/automated-frontend-testing-ui).
 It exposes REST APIs that assist in automating **functional testing of frontend web applications**.
 It is written in **TypeScript** and runs on **Node.js**, combining static code analysis, dependency graph resolution, and browser automation.
+
 Concretely, it statically analyzes frontend codebases (with focus on Angular projects) to:
 
 1. Extract **modules, routes, components, widgets, templates, and logic graphs**
@@ -62,6 +63,24 @@ Concretely, it statically analyzes frontend codebases (with focus on Angular pro
 
 ---
 
+### 🤖 LLM-Assisted Journey Refinement
+* `POST /llm/journeys/refine`
+* Accepts the **raw** journeys plus the navigation graph and/or route map, then:
+  * **De-duplicates & merges** semantically similar journeys (keeps the clearest representative)
+  * **Patches** small inconsistencies (step types / `via` / ordering) **without inventing nodes**
+  * **Proposes minimal additions** to improve coverage of routes & backend calls (when truly missing)
+  * Marks changes with `source: "llm"` and derives **deterministic IDs** for stable re-runs
+* **Operational guarantees**
+  * **Strict Zod schemas**, standardized error envelopes
+  * **Idempotency** via `Idempotency-Key` header + **TTL cache** (default 10m)
+  * Per `(analysisId, IP)` **rate limit**
+  * **Timeout** → 504 response (configurable)
+  * **Large payloads OK**: JSON body limit defaults to **10 MB** (configurable)
+
+> This feature is implemented and shipped, and will be further validated on additional apps to tune prompting quality.
+
+---
+
 ### 📸 Screenshot Capture & Serving
  - Uses **Puppeteer** to render and capture SPA routes.
  - stored on disk under `data/screenshots` and retrievable via public GET URLs.
@@ -71,8 +90,11 @@ Concretely, it statically analyzes frontend codebases (with focus on Angular pro
 ---
 
 ### ⚙️ Environment-Driven Configuration
-* `.env` file manages backend/port setup, screenshot directories, and base URLs.
-* Uses a **typed env loader** (`api/env.ts`) to ensure robust startup validation.
+* `.env` file controls backend/port, screenshots, and LLM setup
+* Can reside **either in the backend project root**
+  (`backend/automated-frontend-testing-static-analyzer/.env`)
+  **or at the global repository root** (one shared env for both backend + frontend)
+* Validated at startup via `api/env.ts`
 
 ---
 
@@ -86,8 +108,9 @@ automated-frontend-testing-static-analyzer/
 │  │  ├─ middleware.ts                     # CORS, JSON body, error handler
 │  │  ├─ utils.ts                          # Path helpers (platform-root resolvers, tsconfig lookup)
 │  │  └─ routes/                           # Each domain served by a dedicated route file
-│  │     ├─ actions.ts                     # POST /actions endpoints (parse + infer)
+│  │     ├─ actions.ts                     # POST /actions/{parse|infer}
 │  │     ├─ business-logic.ts              # POST /business-logic
+│  │     ├─ capabilities.ts                # GET /capabilities (feature flags, versions, limits)
 │  │     ├─ components.ts                  # POST /components
 │  │     ├─ graph.ts                       # POST /graph
 │  │     ├─ modules.ts                     # POST /modules
@@ -95,6 +118,7 @@ automated-frontend-testing-static-analyzer/
 │  │     ├─ screenshots.ts                 # POST /screenshots: status, capture, GET/ screenshot image
 │  │     ├─ template.ts                    # POST /template
 │  │     ├─ user-journeys.ts               # POST /user-journeys
+│  │     ├─ llm.ts                         # GET /llm/health, POST /llm/journeys/refine
 │  │     ├─ widget-ids.ts                  # POST /widget-ids
 │  │     └─ widgets.ts                     # POST /widgets
 │  ├─ analyzers/                           # Low-level static analyzers
@@ -125,6 +149,16 @@ automated-frontend-testing-static-analyzer/
 │  │     ├─ user-journey-assembler.ts      # Build journeys from graph
 │  │     ├─ user-journey-processors.ts     # Post-processing
 │  │     └─ user-journey-registry-builder.ts# Registry + indexing
+│  ├─ llm/                                 # LLM integration (provider-agnostic core)
+│  │  ├─ providers/openai.provider.ts      # OpenAI provider: minimal chat wrapper (+ JSON mode)
+│  │  ├─ cache.ts                          # In-memory TTL cache (idempotency & replay safety)
+│  │  ├─ factory.ts                        # Provider factory from env config (LLM_ENABLED, provider)
+│  │  ├─ gate.ts                           # Middleware that 503s when LLM is disabled/misconfigured
+│  │  ├─ journeys-refiner.service.ts       # Core logic for POST /llm/journeys/refine (prompting + post-process)
+│  │  ├─ rate-limit.ts                     # Sliding-window rate limiter per (analysisId, IP)
+│  │  ├─ schemas.ts                        # Zod schemas for request/response validation
+│  │  ├─ types.ts                          # Provider-neutral types (LlmProvider interface)
+│  │  └─ utils.ts                          # Supporting utility functions for the LLM feature
 │  ├─ orchestrators/                       # High-level workflows
 │  │  ├─ static-analyzer.ts                # End-to-end static project analysis orchestrator
 │  │  └─ user-journey-extractor.ts         # Drives user journey discovery (Graph → journeys pipeline)
@@ -134,20 +168,20 @@ automated-frontend-testing-static-analyzer/
 │  │  └─ template-parser.ts                # DOM/HTML parsing utilities
 │  ├─ services/
 │  │  └─ screenshot.service.ts             # Headless capture, on-disk status/markers
-│  ├─ models/
-│  │  ├─ analyzer-config.ts
-│  │  ├─ component-info.ts
-│  │  ├─ event-info.ts
-│  │  ├─ module-info.ts
-│  │  ├─ navigation-graph.ts
-│  │  ├─ route-info.ts
-│  │  ├─ screenshot-info.ts                # Types for screenshot status items
-│  │  ├─ widget-info.ts
+│  ├─ models/                              # Shared type models
+│  │  ├─ analyzer-config.ts                # DEFAULT_ANALYZER_CONFIG + tuning knobs (granularity, noise filters)
+│  │  ├─ component-info.ts                 # ComponentInfo + ComponentRegistry (selector/class/widgets/children)
+│  │  ├─ event-info.ts                     # UserEventType, NavEventType, event call graphs (WidgetEventMap)
+│  │  ├─ module-info.ts                    # ModuleInfo + ModuleRegistry (roles, imports/declares/exports)
+│  │  ├─ navigation-graph.ts               # AppNavigation graph types (nodes/edges/transitions)
+│  │  ├─ route-info.ts                     # RouteMap + ComponentRouteMap (+ guards, resolvers, data)
+│  │  ├─ screenshot-info.ts                # ScreenshotStatusItem (ready/waiting/capturing/missing)
+│  │  ├─ widget-info.ts                    # WidgetInfo (events, attributes, validation, children)
 │  │  ├─ scenarios/
-│  │  │  └─ stage-action.ts                # Type for action staging (StageActionKind, StageTarget, etc.)
+│  │  │  └─ stage-action.ts                # Engine-neutral StageAction model (navigate/click/input/submit…)
 │  │  └─ user-journeys/
-│  │     ├─ user-journey-constants.ts
-│  │     └─ user-journey-info.ts
+│  │     ├─ user-journey-constants.ts      # Canonical virtual node IDs and terminal kinds
+│  │     └─ user-journey-info.ts           # UserJourney model + registry + invariants
 │  └─ logging/
 │     └─ logger.ts                         # Winston + rotate file logger
 ├─ data/                                   # Ignored runtime artifacts
@@ -155,7 +189,7 @@ automated-frontend-testing-static-analyzer/
 ├─ package.json
 ├─ tsconfig.json
 ├─ nodemon.json
-├─ .env                                    # Optional env overrides (see below)
+├─ .env                                    # Optional env overrides (see environment configuration below)
 ├─ .gitignore
 └─ LICENSE
 ```
@@ -163,6 +197,8 @@ automated-frontend-testing-static-analyzer/
 ---
 
 ## 🛠 Installation & Build
+**Requirements**: `Node.js` ≥ 22.1.0 and `npm` ≥ 10.8.3.
+
 ```bash
 git clone https://github.com/anonbnr/automated-frontend-testing-static-analyzer.git
 cd automated-frontend-testing-static-analyzer
@@ -181,31 +217,88 @@ npm run dev
 ---
 
 ## ⚙️ Configuration & Environment
-Create a `.env` in the backend root (same dir as `package.json`) or export env vars.
+You can define environment variables **either in the backend root**
+or in a **shared global `.env`** at the repository root (recommended if using both backend & frontend).
 
 ```ini
-# Server
-BACKEND_PORT=3000           # fallback to PORT, else 3000
-BACKEND_API_BASE_URL=http://localhost:3000 # base URL for the backend server
+# =============================================================================
+# Backend Environment
+# -----------------------------------------------------------------------------
+# The backend HTTP server settings and public base URL.
+# =============================================================================
 
-# Screenshots storage
+BACKEND_PORT=3000
+# Port to bind the backend server to. If not set, falls back to PORT, else 3000.
+
+BACKEND_API_BASE_URL=http://localhost:3000
+# The externally reachable base URL of this backend (used in links / screenshots responses).
+
 BACKEND_SCREENSHOTS_STORAGE_DIR=data/screenshots
-# Screenshots base URL of the frontend-under-test; if omitted, derived from FRONTEND_PORT
-BACKEND_SCREENSHOTS_BASE_URL=http://localhost:4200
-# Used only to derive the above when BACKEND_SCREENSHOTS_BASE_URL is not set
-FRONTEND_PORT=4200
+# Absolute or relative on-disk path where screenshots are stored.
+# Example layout: data/screenshots/<sha1(analysisId)>/<sha1(journeyId)>/<sha1(route)>.png
 
-# (Planned) backend LLM — off by default
-LLM_ENABLED=false
+BACKEND_SCREENSHOTS_BASE_URL=http://localhost:4200
+# Base URL of the frontend under test (the SPA to screenshot).
+# If omitted, it will be derived from FRONTEND_PORT (see below).
+
+# =============================================================================
+# Frontend Environment
+# -----------------------------------------------------------------------------
+# Only used to derive BACKEND_SCREENSHOTS_BASE_URL if not explicitly set.
+# =============================================================================
+
+FRONTEND_PORT=4200
+# Port where your SPA is served during analysis (e.g., ng serve).
+
+# =============================================================================
+# API Config
+# -----------------------------------------------------------------------------
+# Server middleware and payload size limits.
+# =============================================================================
+
+API_JSON_LIMIT=10mb
+# Express JSON body limit for large graph/journey payloads. Default is 10 MB.
+
+# =============================================================================
+# LLM (Optional)
+# -----------------------------------------------------------------------------
+# Enable and configure LLM-backed features like /llm/journeys/refine.
+# When LLM_ENABLED=false, LLM routes are gated with 503 + a helpful hint.
+# =============================================================================
+
+LLM_ENABLED=true
+# Enable LLM-backed endpoints when true.
+
 LLM_PROVIDER=openai
-LLM_API_KEY=sk-...
-LLM_MODEL=gpt-4.1
-LLM_TIMEOUT_MS=30000
-LLM_MAX_TOKENS=4000
+# Current supported provider: "openai".
+
+LLM_API_KEY=<api_key>
+# API key for the selected provider. Required if LLM_ENABLED=true.
+
+LLM_MODEL=gpt-4o-mini
+# Provider model identifier. Keep in sync with your provider’s available models.
+
+LLM_TIMEOUT_MS=360000
+# Max time (ms) to wait for the provider before aborting the request (AbortError → 504).
+
+LLM_MAX_TOKENS=12000
+# Upper clamp for provider response tokens.
+
 LLM_RATE_LIMIT_PER_MIN=30
+# Sliding-window rate limit per (analysisId, IP), in requests/minute.
+
+LLM_JOURNEYS_CACHE_TTL_SEC=600
+# TTL (in seconds) for the in-memory idempotency cache used by /llm/journeys/refine.
+
+# =============================================================================
+# Notes:
+# - You can keep a single `.env` at the repository root to share config across
+#   frontend + backend, or place a dedicated `.env` inside the backend folder.
+# - On startup, src/api/env.ts validates and prints a concise summary.
+# =============================================================================
 ```
 
-At startup, `src/api/env.ts` prints a one-line summary of resolved values.
+At startup, `api/env.ts` prints resolved configuration and validation.
 
 **Data layout:** screenshots are stored under
 `data/screenshots/<sha1(analysisId)>/<sha1(journeyId)>/<sha1(route)>.png`
@@ -216,7 +309,7 @@ Marker files `.pending` / `.capturing` live alongside the PNG to reflect state.
 * `backend.serviceCallerRe`: regex to detect backend callers (default matches `*Service`, `http`, `httpClient`, `api`)
 * `noise.methodNames` / `noise.freeFunctions`: filter Rx/plumbing/logging calls
 
-> Note: advanced config is currently wired through constructors (not via the REST API).
+> Remark: advanced config is currently wired through constructors (not via the REST API).
 
 ---
 
@@ -239,26 +332,27 @@ curl http://localhost:3000/healthz
 ## 🔌 REST API Reference
 Each endpoint accepts and returns JSON unless stated otherwise.
 
-| Method   | Endpoint                                        | Description                                                                       |
-| :------- | :---------------------------------------------- | :-------------------------------------------------------------------------------- |
-| **POST** | `/modules`                                      | Analyze the application’s modules and their roles.                                |
-| **POST** | `/components`                                   | Analyze components: templates, inputs/outputs, selectors.                         |
-| **POST** | `/routes`                                       | Extract routing configuration and metadata.                                       |
-| **POST** | `/widgets`                                      | Extract and classify widgets from component templates.                            |
-| **POST** | `/template`                                     | Template-level structural parsing.                                                |
-| **POST** | `/business-logic`                               | Discover event-to-handler connections within components.                          |
-| **POST** | `/graph`                                        | Generate a unified navigation graph across all layers.                            |
-| **POST** | `/user-journeys`                                | Infer high-level user journeys from the navigation graph.                         |
-| **POST** | `/screenshots/:analysisId/status`               | Return screenshot availability for all routes/journeys.                           |
-| **POST** | `/screenshots/:analysisId/capture`              | Launch Puppeteer capture jobs; returns status envelope.                           |
-| **GET**  | `/screenshots/:analysisId/:journeyId/:route(*)` | Serve existing screenshot PNG from disk.                                          |
-| **POST** | `/actions/parse`                                | Parse a StageAction DSL string into structured actions and diagnostics. |
-| **POST** | `/actions/infer`                                | Infer ordered StageActions from journey, graph, and widget IDs.         |
+| Method   | Endpoint                                        | Description                                                               |
+| :------- | :---------------------------------------------- | :------------------------------------------------------------------------ |
+| **POST** | `/modules`                                      | Analyze the application’s modules and their roles.                        |
+| **POST** | `/components`                                   | Analyze components: templates, inputs/outputs, selectors.                 |
+| **GET**  | `/capabilities`                                 | Return server capabilities, versions, feature flags, and limits.          |
+| **POST** | `/routes`                                       | Extract routing configuration and metadata.                               |
+| **POST** | `/widgets`                                      | Extract and classify widgets from component templates.                    |
+| **POST** | `/widget-ids`                                   | Compute stable widget IDs for a component/template.                       |
+| **POST** | `/template`                                     | Template-level structural parsing.                                        |
+| **POST** | `/business-logic`                               | Discover event-to-handler connections within components.                  |
+| **POST** | `/graph`                                        | Generate a unified navigation graph across all layers.                    |
+| **POST** | `/user-journeys`                                | Infer high-level user journeys from the navigation graph.                 |
+| **POST** | `/llm/journeys/refine`                          | Refine journeys (dedupe, merge, intent rename, patch, minimal additions). |
+| **GET**  | `/llm/health`                                   | Check LLM connectivity and configuration                                  |
+| **POST** | `/actions/parse`                                | Parse a StageAction DSL string into structured actions and diagnostics.   |
+| **POST** | `/actions/infer`                                | Infer ordered StageActions from journey, graph, and widget IDs.           |
+| **POST** | `/screenshots/:analysisId/status`               | Return screenshot availability for all routes/journeys.                   |
+| **POST** | `/screenshots/:analysisId/capture`              | Launch Puppeteer capture jobs; returns status envelope.                   |
+| **GET**  | `/screenshots/:analysisId/:journeyId/:route(*)` | Serve existing screenshot PNG from disk.                                  |
 
 ---
-
-## 🔌 API Reference
-All endpoints expect a JSON body including `"projectRoot": "/absolute/path/to/your/angular/project"` and, where required, `"selector": "app-your-component"`.
 
 ### POST `/modules`
 
@@ -481,6 +575,97 @@ Builds and returns user journeys from the navigation graph.
 }
 ```
 
+### GET `/capabilities`
+**Response**
+
+```json
+{
+    "success": true,
+    "backend": {
+        "version": "4.3.0",
+        "node": "22.1.0+",
+        "apiJsonLimit": "10mb"
+    },
+    "features": [
+        "analysis",
+        "graph",
+        "user-journeys",
+        "screenshots",
+        "llm"
+    ],
+    "llm": {
+        "enabled": true,
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "maxTokens": 12000,
+        "rateLimitPerMin": 30,
+        "cacheTtlSec": 600
+    }
+}
+```
+
+---
+
+### POST `/llm/journeys/refine`
+**Purpose**
+Dedupe & merge raw journeys, **rename intents**, patch minor inconsistencies, and add minimal, graph-derivable journeys to improve coverage.
+
+**Headers**
+* `Idempotency-Key` *(optional but recommended)*: enables safe retries + cache hits.
+
+**Request (shape)**
+
+```json
+{
+  "analysisId": "demo-a1",
+  "journeys": [ /* UserJourney[] as produced by /user-journeys or prior runs */ ],
+  "graph": { /* AppNavigation */ },      // provide graph and/or routeMap
+  "routeMap": { /* RouteMap */ }
+}
+```
+
+**Response (shape)**
+
+```json
+{
+  "added": [ /* UserJourney[] (source:"llm") */ ],
+  "removed": [ "J-duplicate-1", "J-duplicate-2" ],
+  "merged": [
+    { "from": ["J-duplicate-1","J-duplicate-2"], "to": {/* representative journey */} }
+  ],
+  "updated": [ /* patched UserJourney[] (source:"llm") */ ],
+  "finalJourneys": [ /* merged output set */ ],
+  "meta": {
+    "provider": "openai",
+    "tookMs": 1234,
+    "fromCache": false
+  }
+}
+```
+
+**Notes**
+
+* Uses **strict Zod validation** on both request and response.
+* Enforces **“only use nodes from the provided graph”** in prompting.
+* Adds **deterministic IDs** for LLM-created/updated journeys.
+* **Rate-limited** per `(analysisId, IP)`; **cached** per idempotency-key (TTL = `LLM_JOURNEYS_CACHE_TTL_SEC`).
+
+---
+
+### GET `/llm/health`
+**Response**
+
+```json
+{
+  "success": true,
+  "provider": "openai",
+  "enabled": true,
+  "model": "gpt-4o-mini"
+}
+```
+
+---
+
 ### POST `/actions/parse`
 **Input**
 
@@ -605,15 +790,17 @@ Serves the PNG for a logical SPA route. The `route` segment is the *logical path
 
 ## 🔐 Notes & Limits
 * Puppeteer runs in headless mode with animations/transitions disabled for stable visuals.
-* Designed for single instance. If you scale, guard `capture()` with your own queue/lock.
 * The `data/` directory is **git-ignored**.
+* LLM requests cached (default 600s TTL).
+* Rate-limited per `(analysisId, IP)` (default: 30/min).
+* Safe retries via `Idempotency-Key` header.
 
 ---
 
 ## 🧪 Roadmap
-- Backend LLM endpoints (journey refine, staging suggest, oracle/script gen).
-- Scenarios/Workflows storage & export (runnable Playwright/Puppeteer/Selenium).
-- Export caching and error envelopes with hint.
+* Further prompt tuning for user journeys on diverse frontends.
+* Additional LLM endpoints (staging suggestions, oracle/script generation).
+* Scenario and workflow storage/export (Selenium generator).
 
 ---
 

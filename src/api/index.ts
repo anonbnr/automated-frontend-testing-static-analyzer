@@ -10,15 +10,16 @@
 //  - Starts the HTTP server
 // ──────────────────────────────────────────────────────────────────────────────
 
-import './env.js'; // .env is loaded and env is initialized first
-
 import express, { Express, Request, Response } from 'express';
 import logger from '../logging/logger.js';
+import { env } from './env.js';
 import { corsMiddleware, errorHandler, jsonBodyParser } from './middleware.js';
 import actionsRouter from './routes/actions.js';
 import logicRouter from './routes/business-logic.js';
+import capabilitiesRouter from './routes/capabilities.js';
 import componentsRouter from './routes/components.js';
 import graphRouter from './routes/graph.js';
+import llmRouter from './routes/llm.js';
 import modulesRouter from './routes/modules.js';
 import routesRouter from './routes/routes.js';
 import screenshotsRouter from './routes/screenshots.js';
@@ -28,7 +29,6 @@ import widgetIdsRouter from './routes/widget-ids.js';
 import widgetsRouter from './routes/widgets.js';
 
 const app: Express = express();
-const port = Number(process.env.BACKEND_PORT ?? process.env.PORT ?? 3000);
 
 // ── GLOBAL MIDDLEWARE ─────────────────────────────────────────────────────────
 app.use(corsMiddleware);
@@ -54,6 +54,8 @@ const ROUTES: Array<[path: string, router: any]> = [
     ["/user-journeys", userJourneyRouter],
     ["/screenshots", screenshotsRouter],
     ["/actions", actionsRouter],
+    ["/capabilities", capabilitiesRouter],
+    ["/llm", llmRouter],
 ];
 
 for (const [path, router] of ROUTES) app.use(path, router);
@@ -62,6 +64,16 @@ for (const [path, router] of ROUTES) app.use(path, router);
 app.use(errorHandler);
 
 // ── START SERVER ───────────────────────────────────────────────────────────────
-app.listen(port, () => {
-    logger.info(`🚀 [Server] Static Analyzer API listening on http://localhost:%d`, port);
+app.listen(env.PORT, () => {
+    logger.info(`🚀 [Server] Listening on http://localhost:%d`, env.PORT);
+    logger.info(
+        '[Server] screenshots: storage=%s baseUrl=%s',
+        env.SCREENSHOTS_STORAGE_ROOT,
+        env.SCREENSHOTS_BASE_URL
+    );
+    logger.info(
+        '[Server] llm: enabled=%s provider=%s',
+        String(env.llm.enabled),
+        env.llm.provider
+    );
 });

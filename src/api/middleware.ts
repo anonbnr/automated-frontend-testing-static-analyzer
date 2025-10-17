@@ -13,6 +13,7 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import { NextFunction, Request, Response } from 'express';
 import logger from '../logging/logger.js';
+import { env } from './env.js';
 
 /**
  * Enables Cross-Origin Resource Sharing (CORS) for all incoming requests.
@@ -24,7 +25,9 @@ export const corsMiddleware = cors();
  * Parses incoming request bodies with `Content-Type: application/json`.
  * Populates `req.body` with the parsed JSON object.
  */
-export const jsonBodyParser = bodyParser.json();
+export const jsonBodyParser = bodyParser.json({
+    limit: env.API_JSON_LIMIT,   // <= bumped from default 100kb
+});
 
 /**
  * Centralized error handler.  
@@ -35,17 +38,11 @@ export const jsonBodyParser = bodyParser.json();
  * @param res    - The Express Response object.
  * @param next   - The next middleware function in the stack.
  */
-export function errorHandler(
-    err: any,
-    req: Request,
-    res: Response,
-    next: NextFunction
-) {
-    logger.error('[ErrorHandler] %o', err);
-    res
-        .status(err.status || 500)
-        .json({
-            success: false,
-            error: err.message || 'Internal Server Error'
-        });
+export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
+    const status = err?.status || err?.statusCode || 500;
+    const expose = err?.expose ?? true;
+    const msg = (expose && err?.message) ? err.message : 'Internal Server Error';
+
+    logger.error('[ErrorHandler] %s: %s', err?.name || 'Error', err?.stack || msg);
+    res.status(status).json({ success: false, error: msg });
 }

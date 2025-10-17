@@ -1,4 +1,4 @@
-// src/orchestrators/user-journey-extractor.ts
+// orchestrators/user-journey-extractor.ts
 /**
  * UserJourneyExtractor
  * =================

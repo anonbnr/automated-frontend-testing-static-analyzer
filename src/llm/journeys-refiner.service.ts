@@ -203,13 +203,14 @@ export class JourneysRefinerService {
         // 3) LLM call
         logger.info('[llm.refine] req=%s analysisId=%s provider=%s', requestId, analysisId, provider.name);
 
+
         const raw = await provider.complete({
             system,
             prompt,
             json: true,
             maxTokens: Math.min(10000, env.llm.openai.maxTokens),
             timeoutMs: env.llm.openai.timeoutMs,
-            temperature: 0.35,
+            temperature: 0,
         });
 
         // 4) Parse + coerce to our response schema (accept LLM JSON; enforce constraints)

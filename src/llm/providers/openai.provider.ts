@@ -47,7 +47,9 @@ export class OpenAIProvider implements LlmProvider {
             ],
             ...(opts.json ? { response_format: { type: 'json_object' as const } } : {}),
             max_tokens: opts.maxTokens ?? this.cfg.maxTokens,
-            temperature: opts.temperature ?? 0.2,
+            temperature: opts.temperature ?? 0,
+            top_p: 1.0,
+            seed: 123456
         };
 
         const endpoint = (this.cfg.baseUrl || 'https://api.openai.com/v1') + '/chat/completions';

@@ -131,6 +131,12 @@ export const env = {
         journeysCacheTtlSec: envNum('LLM_JOURNEYS_CACHE_TTL_SEC', 600),
     },
 
+    app: {
+        cache: {
+            TTL_SEC: envNum('TTL_SEC', 600)
+        }
+    },
+
     // Max JSON request size accepted by body-parser. Express accepts values like '100kb', '1mb'.
     API_JSON_LIMIT: envStr('API_JSON_LIMIT', '10mb'),
 };

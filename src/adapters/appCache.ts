@@ -3,31 +3,35 @@ import { UserJourney } from "../models/user-journeys/user-journey-info.js";
 import { Scenario } from "../models/scenarios/scenarios-info.js";
 import { env } from '../api/env.js';
 import logger from "../logging/logger.js";
+import { ComponentRouteMap } from "../models/route-info.js";
 
 
-type ScnerarioMap = Map<string, Scenario>;
+type ScenarioMap = Map<string, Scenario>;
 
 type JourneyMapValue = {
     journey: UserJourney,
-    scenarios: ScnerarioMap
+    scenarios: ScenarioMap
 }
 
 type analyzeMapValue = {
+    compRouteMap: ComponentRouteMap,
     graph: AppNavigation,
     journeys: Map<string, JourneyMapValue>,
     expiresAt: number
 }
 
 
-const analyzes = new Map<string, analyzeMapValue>;
+const analyzes = new Map<string, analyzeMapValue>();
 
-function getAnalyze(analyzeId: string) {
+export function getAnalyze(analyzeId: string) {
     const analyze = analyzes.get(analyzeId);
     
-    if (analyze && analyze.expiresAt < Date.now())
+    if (analyze && analyze.expiresAt < Date.now()) {
         analyzes.delete(analyzeId);
+        return undefined;
+    }
 
-    return (analyze);
+    return analyze;
 }
 
 function updateExpiration(analyze: analyzeMapValue) {
@@ -38,11 +42,15 @@ function updateExpiration(analyze: analyzeMapValue) {
 // NavigationGraph ACCESSORS
 
 export function getNavigationGraph(analyzeId: string) {
+    logger.info('[CACHE] Getting navigation graph from cache for "%s""',
+        analyzeId
+    );
     return getAnalyze(analyzeId)?.graph;
 }
 
-export function setNavigationGraph(analyzeId: string, graph: AppNavigation) {
+export function setNavigationGraph(analyzeId: string, graph: AppNavigation, compRouteMap: ComponentRouteMap) {
     const analyzeValue = {
+        compRouteMap,
         graph,
         journeys: new Map<string, JourneyMapValue>(),
         expiresAt: 0
@@ -50,6 +58,10 @@ export function setNavigationGraph(analyzeId: string, graph: AppNavigation) {
     updateExpiration(analyzeValue);
     analyzes.set(analyzeId, analyzeValue);
     
+    logger.info('[CACHE] Setting navigation graph into cache for "%s""',
+        analyzeId
+    );
+
     return true;
 }
 
@@ -61,13 +73,17 @@ export function setNavigationGraph(analyzeId: string, graph: AppNavigation) {
 // UserJourney ACCESSORS
 
 export function getUserJourney(analyzeId: string, UserJourneyId: string) {
+    logger.info('[CACHE] Setting user-journey "%s" into cache for "%s""',
+        UserJourneyId,
+        analyzeId
+    );
     return getAnalyze(analyzeId)?.journeys.get(UserJourneyId)?.journey;
 }
 
 export function setUserJourney(analyzeId: string, UserJourney: UserJourney) { 
     const analyze = analyzes.get(analyzeId);
 
-    if (!analyze) {
+    if (analyze === undefined) {
         return false;
     }
 
@@ -79,6 +95,10 @@ export function setUserJourney(analyzeId: string, UserJourney: UserJourney) {
     updateExpiration(analyze);
     analyze.journeys.set(UserJourney.id, journeyMapValue);
     
+    logger.info('[CACHE] Setting user-journey "%s" from cache for "%s""',
+        UserJourney.id,
+        analyzeId
+    );
     return true;
 }
 
@@ -102,13 +122,13 @@ export function getScenario(analyzeId: string, UserJourneyId: string, scenarioId
 export function setScenario(analyzeId: string, UserJourneyId: string, scenario: Scenario) {
     const analyze = analyzes.get(analyzeId);
 
-    if (!analyze) {
+    if (analyze === undefined) {
         return false;
     }
 
     const journey = analyze.journeys.get(UserJourneyId);
 
-    if (!journey) {
+    if (journey === undefined) {
         return false;
     }
 

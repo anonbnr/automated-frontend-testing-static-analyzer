@@ -24,6 +24,7 @@ import { FanoutMode } from "../../builders/user-journeys/user-journey-processors
 import logger from "../../logging/logger.js";
 import { ExtractOptions, UserJourneyExtractor } from "../../orchestrators/user-journey-extractor.js";
 import { resolveTsConfig } from "../utils.js";
+import { UserJourneyRegistry } from "../../models/user-journeys/user-journey-info.js";
 
 const router = Router();
 
@@ -89,8 +90,9 @@ router.post("/", async (req: Request, res: Response) => {
             opts.maxDepth ?? "-"
         );
 
+        
         const extractor = new UserJourneyExtractor(tsConfig);
-        const registry = await extractor.extract(opts);
+        const registry = await extractor.extract(opts, projectRoot);
         const journeys = registry.getAll();
 
         // Response headers for observability and cache behavior

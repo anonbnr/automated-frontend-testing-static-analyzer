@@ -71,7 +71,7 @@ router.post('/', async (req: Request, res: Response) => {
     let graph = getNavigationGraph(projectRoot);
     if (!graph) {
       graph = await analyzer.analyze();
-      setNavigationGraph(projectRoot, graph);
+      setNavigationGraph(projectRoot, graph, analyzer.compRouteMap);
     }
     else {
       logger.info("[POST /graph] Getting navigation graph from cache");

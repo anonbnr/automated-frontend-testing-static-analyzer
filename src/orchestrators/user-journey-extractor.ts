@@ -16,6 +16,8 @@ import { FanoutMode } from "../builders/user-journeys/user-journey-processors.js
 import { UserJourneyRegistryBuilder } from "../builders/user-journeys/user-journey-registry-builder.js";
 import { UserJourneyRegistry } from "../models/user-journeys/user-journey-info.js";
 import { StaticAnalyzer } from "./static-analyzer.js";
+import { getAnalyze, getNavigationGraph, setNavigationGraph, setUserJourney } from "../adapters/appCache.js";
+import logger from "../logging/logger.js";
 
 export interface ExtractOptions {
     /** Pre-processor fanout behavior. Defaults to "primary". */
@@ -42,17 +44,63 @@ export class UserJourneyExtractor {
     *
     * @param options Extraction options (fanout mode, reserved knobs)
     */
-    async extract(options: ExtractOptions = {}): Promise<UserJourneyRegistry> {
+    async extract(options: ExtractOptions = {}, projectRoot: string): Promise<UserJourneyRegistry> {
         const { fanoutMode = "primary" } = options;
 
         // 1) build the navigation multigraph via static analysis
-        const navGraph = await this.staticAnalyzer.analyze();
+        const analyze = getAnalyze(projectRoot);
 
+        let registry = undefined;
+        const journeys = analyze?.journeys;
+        if (journeys && journeys.size !== 0) {
+            registry = new UserJourneyRegistry();
+            
+            for (const journeyValue of journeys.values()) {
+                registry.add(journeyValue.journey);
+            }
+            logger.info('[POST /user-journeys] Getting user-journeys from cache for "%s"',
+                projectRoot
+            );
+        }
+        else {
+            let navGraph = analyze?.graph;
+
+            let compRouteMap = analyze?.compRouteMap;
+            
+            if (navGraph === undefined || compRouteMap === undefined) {
+                navGraph = await this.staticAnalyzer.analyze();
+                compRouteMap = this.staticAnalyzer.compRouteMap;
+                setNavigationGraph(projectRoot, navGraph, compRouteMap);
+                logger.info('[POST /user-journeys] Setting navigation graph into cache for "%s", routeMap = "%s"',
+                    projectRoot,
+                    this.staticAnalyzer.compRouteMap
+                );
+            }
+            else {
+                logger.info('[POST /user-journeys] Getting navigation graph from cache for "%s", routeMap = "%s"',
+                    projectRoot,
+                    this.staticAnalyzer.compRouteMap
+                );
+            }
+            
+            registry = new UserJourneyRegistryBuilder(
+                compRouteMap,
+                navGraph,
+                fanoutMode
+            ).build();
+            
+            for (const journey of registry.getAll()) {
+                setUserJourney(journey.id, journey);
+            }
+
+            logger.info('[POST /user-journeys] Setting user-journeys into cache for "%s"',
+                projectRoot
+            );
+        }
+        
         // 2) assemble + process user journeys
-        return new UserJourneyRegistryBuilder(
-            this.staticAnalyzer.compRouteMap,
-            navGraph,
-            fanoutMode
-        ).build();
+        return registry;
     }
+
 }
+

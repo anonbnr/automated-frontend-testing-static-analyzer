@@ -2,11 +2,11 @@
 // api/middleware.ts
 //
 // Shared Express middleware for the StaticAnalyzer API:
-//   - corsMiddleware   – enables CORS on all routes
-//   - jsonBodyParser   – parses incoming JSON payloads
-//   - errorHandler     – catches errors, logs them, and formats a JSON response
+//   • corsMiddleware  – enable CORS for cross-origin clients
+//   • jsonBodyParser  – parse incoming JSON payloads
+//   • errorHandler    – centralized error-to-JSON response formatter
 //
-// Applied in api/index.ts to ensure consistent request handling and error reporting.
+// Applied in api/index.ts to ensure consistent request handling and reporting.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import bodyParser from 'body-parser';
@@ -22,27 +22,36 @@ import { env } from './env.js';
 export const corsMiddleware = cors();
 
 /**
- * Parses incoming request bodies with `Content-Type: application/json`.
- * Populates `req.body` with the parsed JSON object.
+ * JSON body parser with an increased limit (configurable via env).
+ * Populates `req.body` for routes that accept JSON payloads.
  */
 export const jsonBodyParser = bodyParser.json({
-    limit: env.API_JSON_LIMIT,   // <= bumped from default 100kb
+    // Raised from Express default to accommodate large analyses.
+    limit: env.API_JSON_LIMIT,
 });
 
 /**
- * Centralized error handler.  
- * Logs the full error to the console, then sends a standardized JSON response.
+ * Centralized error handler.
  *
- * @param err    - The error thrown in any route or middleware.
- * @param req    - The Express Request object.
- * @param res    - The Express Response object.
- * @param next   - The next middleware function in the stack.
+ * Behavior:
+ *   • Picks an HTTP status from `err.status`/`err.statusCode` (default 500).
+ *   • If `err.expose` is true (default), returns `err.message`; otherwise a generic message.
+ *   • Logs the full error (with stack) for diagnostics.
+ *
+ * Always returns a JSON response of the form:
+ *   { success: false, error: string }
+ *
+ * @param err  - Error thrown from routes or middleware.
+ * @param _req - Express Request (unused).
+ * @param res  - Express Response used to send the JSON error.
+ * @param _next - Next function (unused).
  */
 export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
     const status = err?.status || err?.statusCode || 500;
     const expose = err?.expose ?? true;
     const msg = (expose && err?.message) ? err.message : 'Internal Server Error';
 
+    // Log full stack if present; otherwise fall back to message.
     logger.error('[ErrorHandler] %s: %s', err?.name || 'Error', err?.stack || msg);
     res.status(status).json({ success: false, error: msg });
 }

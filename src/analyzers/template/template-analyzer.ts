@@ -1,23 +1,22 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // analyzers/template/template-analyzer.ts
 //
-// Analyzes an Angular component’s template to produce a ComponentInfo.
-// 
-// 1. **Selector & class**
-//    - Reads the component’s `selector` and class `name` from the decorator.
+// Purpose
+//   Analyze a single Angular component template and produce its ComponentInfo:
+//     • selector & class name
+//     • full widget forest (WidgetInfo[]) with hierarchy
+//     • deduped nested component selectors (<app-*>)
 //
-// 2. **Template resolution**
-//    - (Outside responsibility) template text is passed in, having been
-//      loaded via inline `template` or `templateUrl`.
+// Pipeline
+//   1) Selector & class    → AstUtils (from @Component and its class)
+//   2) Template resolution → (done by caller) pass raw template text
+//   3) AST parsing         → TemplateUtils.parseTemplateToAst(template)
+//   4) Widget extraction   → TemplateUtils.extractWidgetsFromAst(decorator, ast, template)
+//   5) Nested components   → TemplateUtils.extractNestedComponentsFromAst(ast)
 //
-// 3. **AST parsing**
-//    - Delegates to `TemplateUtils.parseTemplateToAst`.
-//
-// 4. **Widget extraction**
-//    - Uses `TemplateUtils.extractWidgetsFromAst` to collect all interactive widgets.
-//
-// 5. **Nested components**
-//    - Uses `TemplateUtils.extractNestedComponentsFromAst` to find `<app-*>` tags.
+// Notes
+//   • Throws if selector or class name cannot be inferred.
+//   • Logging is verbose by design to aid troubleshooting.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Decorator } from 'ts-morph';
@@ -27,36 +26,37 @@ import { AstUtils } from '../../parsers/ast-utils.js';
 import { TemplateUtils } from './template-utils.js';
 
 /**
- * Analyzes an Angular component’s template to build its ComponentInfo:
+ * Analyzes an Angular component's template to build its ComponentInfo:
  *   - selector & class name
- *   - list of interactive WidgetInfo
- *   - list of nested component selectors
+ *   - list of interactive WidgetInfo (hierarchical)
+ *   - list of nested <app-*> component selectors (deduped)
  */
 export class TemplateAnalyzer {
     /**
-     * Create a TemplateAnalyzer for a given `@Component({...})` decorator.
-     * @param decorator   The ts-morph `Decorator` `@Component(...)` decorator node.
-     */
+    * @param decorator The ts-morph `Decorator` for `@Component(...)`.
+    */
     constructor(private decorator: Decorator) { }
 
     /**
-   * Runs the template analysis pipeline:
-   *  1. Reads `selector` and class `name` via AST utils.
-   *  2. Parses the provided template string into an Angular AST.
-   *  3. Extracts every interactive widget.
-   *  4. Discovers any nested `<app-*>` selectors.
-   *
-   * @param template  The full template text (inline or file-loaded).
-   * @returns         A Promise resolving to the component’s `ComponentInfo`.
-   * @throws          If the decorator lacks a `selector` or class name.
-   */
+    * Run the analysis pipeline for the given template text.
+    *
+    * Steps:
+    *  1. Extract selector and class name via AST utils.
+    *  2. Parse template string into Angular AST.
+    *  3. Extract interactive widgets (WidgetProcessor via TemplateUtils).
+    *  4. Discover nested `<app-*>` selectors (deduped).
+    *
+    * @param template The full template text (inline or file-loaded by caller).
+    * @returns A ComponentInfo describing this component.
+    * @throws If the decorator lacks a selector or if class name cannot be inferred.
+    */
     async analyze(template: string): Promise<ComponentInfo> {
         logger.info(
             `[TemplateAnalyzer] Starting analysis for component in file %s`,
             this.decorator.getSourceFile().getFilePath()
         );
 
-        // 1) Extract selector from @Component decorator
+        // 1) Selector from @Component decorator
         const selector = AstUtils.getSelectorFromDecorator(this.decorator);
         logger.debug(`[TemplateAnalyzer] selector → %o`, selector);
         if (!selector) {
@@ -66,7 +66,7 @@ export class TemplateAnalyzer {
             throw new Error("[TemplateAnalyzer] Missing 'selector' from the @Component decorator");
         }
 
-        // 2) Compute the class name from the parent ClassDeclaration
+        // 2) Class name from parent ClassDeclaration
         const name = AstUtils.getClassNameFromDecorator(this.decorator);
         logger.debug(`[TemplateAnalyzer] class name → %o`, name);
         if (!name) {
@@ -108,6 +108,8 @@ export class TemplateAnalyzer {
             selector,
             name
         );
+
+        // Return a snapshot consistent with models/component-info.ts
         return { selector, name, widgets, nestedComponents };
     }
 }

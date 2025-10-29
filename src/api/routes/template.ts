@@ -1,13 +1,31 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // api/routes/template.ts
 //
-// Handles analysis of a single component’s template.
-//   - POST /template
-//     - Validates `projectRoot` and `selector` params
-//     - Ensures `tsconfig.json` exists
-//     - Uses `ComponentRegistryBuilder` to build the registry
-//     - Finds the `ComponentInfo` for the given selector
-//     - Returns its `widgets` and `nestedComponents` metadata
+// Express router: analyzes a single Angular component's template.
+//
+// Endpoint:
+//   POST /template
+//
+// Request body:
+//   {
+//     projectRoot: string,   // absolute path to Angular workspace root
+//     selector: string       // component selector (e.g. "app-login")
+//   }
+//
+// Processing steps:
+//   1) Validate input and resolve `tsconfig.json` from `projectRoot`
+//   2) Create a ts-morph Project using the resolved tsconfig
+//   3) Build the ComponentRegistry (discover components + templates)
+//   4) Find the component matching `selector`
+//   5) Return its ComponentInfo (widgets, nestedComponents, metadata)
+//
+// Success (200):
+//   { success: true, component: ComponentInfo }
+//
+// Errors:
+//   400 — missing params or tsconfig not found
+//   404 — selector not found in registry
+//   500 — template parsing or analysis failure
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Request, Response, Router } from 'express';
@@ -21,25 +39,27 @@ const router = Router();
 /**
  * POST /template
  *
- * Analyzes the template of a single Angular component.
+ * Analyzes the template of a single Angular component and returns its
+ * `ComponentInfo`, which includes:
+ *  - `selector`: component's HTML selector
+ *  - `name`: class name of the component
+ *  - `widgets`: parsed WidgetInfo[] hierarchy
+ *  - `nestedComponents`: child component selectors
  *
- * Request body:
- *   {
- *     projectRoot: string,
- *     selector: string
- *   }
+ * Request Body:
+ * ```json
+ * { "projectRoot": "/abs/path/to/workspace", "selector": "app-example" }
+ * ```
  *
- * Success Response (200):
- *   {
- *     success: true,
- *     component: ComponentInfo
- *   }
+ * Response (200):
+ * ```json
+ * { "success": true, "component": { "selector": "...", "widgets": [...], ... } }
+ * ```
  *
  * Error Responses:
- *   400 Bad Request – Missing `projectRoot` or `selector`
- *   400 Bad Request – `tsconfig.json` not found under `projectRoot`
- *   404 Not Found   – No component with the given selector
- *   500 Internal Server Error – Template analysis failed
+ *  - 400: invalid or missing projectRoot/selector
+ *  - 404: component not found
+ *  - 500: unexpected template analysis failure
  */
 router.post('/', async (req: Request, res: Response) => {
     const { projectRoot, selector } = req.body as {
@@ -47,6 +67,8 @@ router.post('/', async (req: Request, res: Response) => {
         selector?: string;
     };
     logger.debug('[POST /template] projectRoot=%o, selector=%o', projectRoot, selector);
+
+    // Validate required parameters
     if (!projectRoot || !selector) {
         logger.warn('[POST /template] Bad Request – missing projectRoot or selector');
         return res
@@ -54,6 +76,7 @@ router.post('/', async (req: Request, res: Response) => {
             .json({ success: false, error: 'projectRoot and selector are required' });
     }
 
+    // Resolve the tsconfig.json path under projectRoot
     const tsConfig = resolveTsConfig(projectRoot);
     if (!tsConfig) {
         logger.warn('[POST /template] Bad Request – tsconfig.json not found under %s', projectRoot);
@@ -64,10 +87,11 @@ router.post('/', async (req: Request, res: Response) => {
 
 
     try {
-        // Initialize ts-morph project and registry builder
+        // Initialize ts-morph project from the resolved tsconfig
         logger.info("[POST /template] Initializing ts-morph project from %s", tsConfig);
         const project = new Project({ tsConfigFilePath: tsConfig });
 
+        // Build ComponentRegistry (discover all @Component templates)
         const builder = new ComponentRegistryBuilder(project);
         logger.info('[POST /template] Building component registry…');
         const registry = await builder.buildComponentsRegistry();
@@ -76,7 +100,7 @@ router.post('/', async (req: Request, res: Response) => {
             registry.size
         );
 
-        // Find the requested component
+        // Locate the target component by its selector
         logger.info('[POST /template] Looking up selector="%s"', selector);
         const comp = registry.getBySelector(selector);
         if (!comp) {
@@ -86,6 +110,7 @@ router.post('/', async (req: Request, res: Response) => {
                 .json({ success: false, error: `Component with selector "${selector}" not found` });
         }
 
+        // Return the full ComponentInfo (includes widgets and nestedComponents)
         logger.info(
             '[POST /template] Found component "%s" → returning ComponentInfo',
             selector
@@ -94,6 +119,7 @@ router.post('/', async (req: Request, res: Response) => {
         // Return the full ComponentInfo (selector, name, widgets, nestedComponents)
         return res.json({ success: true, component: comp });
     } catch (err: any) {
+        // Unhandled error: log and return 500
         logger.error('[POST /template] Analysis error: %o', err);
         return res
             .status(500)

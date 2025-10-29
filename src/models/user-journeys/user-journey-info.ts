@@ -38,7 +38,7 @@ import { GraphRelationType } from "../navigation-graph.js";
 export type UserJourneyStepType =
     | 'module'
     | 'route'             // internal route ("/users", "/posts/:id", …)
-    | 'external-route'    // external-route (http/https)
+    | 'external-route'    // external-route (absolute http/https URL)
     | 'virtual-route'     // ui-effect/virtual-route ("/ui/…/toggleBio")
     | 'component'
     | 'widget'
@@ -95,7 +95,7 @@ export interface UserJourney {
     /** The module we started in (usually "AppModule"). */
     rootModule: string;
 
-    /** Optional human label set by UI. */
+    /** Optional human-friendly label. */
     name?: string;
 
     /** Absolute project root (for storage/export bucketing). */

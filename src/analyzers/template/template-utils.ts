@@ -1,24 +1,29 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // analyzers/template/template-utils.ts
 //
-// Static utility functions for Angular template analysis.
+// Purpose
+//   Static utilities used by the template analyzer to resolve templates,
+//   parse them into Angular AST nodes, extract widgets, and post-process
+//   widget trees (flattening, nested-component discovery).
 //
-// 1. **Template resolution**
-//    - extractTemplate           : Reads inline `template` or external `templateUrl`
-//    - getTemplateUrl            : Loads the file pointed to by `templateUrl`
-//    - getInlineTemplate         : Reads an inline `template` property
+// Provided utilities
+//   1) Template resolution
+//      - extractTemplate     : prefer external templateUrl; fallback to inline template
+//      - getTemplateUrl      : resolve and read file referenced by `templateUrl`
+//      - getInlineTemplate   : read inline `template` property
+//   2) AST parsing
+//      - parseTemplateToAst  : delegate to AngularTemplateParser
+//   3) Widget extraction
+//      - extractWidgetsFromAst : run WidgetProcessor to build WidgetInfo[]
+//   4) Widget-tree helpers
+//      - flattenWidgets      : depth-first flattening of WidgetInfo trees
+//   5) Nested component discovery
+//      - extractNestedComponentsFromAst : find all `<app-*>` tags
 //
-// 2. **AST parsing**
-//    - parseTemplateToAst        : Delegates to AngularTemplateParser
-//
-// 3. **Widget extraction**
-//    - extractWidgetsFromAst     : Uses WidgetProcessor to pull out WidgetInfo[]
-//
-// 4. **Widget-tree helpers**
-//    - flattenWidgets            : Depth-first flattening of nested WidgetInfo[]
-//
-// 5. **Nested component discovery**
-//    - extractNestedComponentsFromAst : Finds all `<app-*>` tags in an AST
+// Notes
+//   • `extractTemplate` returns the raw template text; it does not attempt minification.
+//   • `parseTemplateToAst` is async to match the parser's contract.
+//   • All traversal helpers are careful to descend into `<ng-template>` nodes.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { TmplAstElement, TmplAstNode, TmplAstTemplate } from "@angular/compiler";
@@ -32,18 +37,18 @@ import { AngularTemplateParser } from "../../parsers/template-parser.js";
 import { WidgetProcessor } from "./widgets/widget-processor.js";
 
 /**
- * Static utility functions for traversing or flattening WidgetInfo hierarchies  
+ * Static utility functions for resolving, parsing, and traversing Angular templates.
  */
 export class TemplateUtils {
-    // ──────────────── Template resolution ──────────────────
+    // ──────────────── 1) Template resolution ──────────────────
 
     /**
-     * Reads either an external template via `templateUrl` or inline `template`
-     * from a `@Component` decorator.
-     *
-     * @param decorator - The `@Component(...)` decorator node.
-     * @returns The template text, or `undefined` if none found.
-     */
+    * Reads either an external template via `templateUrl` or an inline `template`
+    * from a `@Component` decorator (external preferred).
+    *
+    * @param decorator The `@Component(...)` decorator node.
+    * @returns The template text, or `undefined` if not present / not readable.
+    */
     static extractTemplate(decorator: Decorator): string | undefined {
         logger.debug(
             `[TemplateUtils] extractTemplate for decorator in %s`,
@@ -64,11 +69,11 @@ export class TemplateUtils {
     }
 
     /**
-     * If `templateUrl: '...'` is present, resolves and reads that file.
-     *
-     * @param decorator - The `@Component(...)` decorator node.
-     * @returns The file contents, or `undefined` on failure or absence.
-     */
+    * If `templateUrl: '...'` is present, resolves and reads that file.
+    *
+    * @param decorator The `@Component(...)` decorator node.
+    * @returns The file contents, or `undefined` if absent or unreadable.
+    */
     static getTemplateUrl(decorator: Decorator): string | undefined {
         // Retrieve the template's relative URL
         const relative = AstUtils.getPropertyFromDecorator(decorator, 'templateUrl');
@@ -93,32 +98,32 @@ export class TemplateUtils {
     }
 
     /**
-     * Reads an inline `template: '...'` from a `@Component` decorator.
-     *
-     * @param decorator - The `@Component(...)` decorator node.
-     * @returns The inline template text, or `undefined` if not present.
-     */
+    * Reads an inline `template: '...'` from a `@Component` decorator.
+    *
+    * @param decorator The `@Component(...)` decorator node.
+    * @returns The inline template text, or `undefined` if not present.
+    */
     static getInlineTemplate(decorator: Decorator): string | undefined {
         logger.log(
-            'trace', 
+            'trace',
             `[TemplateUtils] Checking for inline 'template' property…`
         );
         return AstUtils.getPropertyFromDecorator(decorator, 'template');
     }
 
-    // ──────────────── AST parsing ──────────────────
+    // ──────────────── 2) AST parsing ──────────────────
 
     /**
-     * Parses a template string into an Angular AST.
-     *
-     * @param template - The raw template text.
-     * @returns Promise resolving to the parsed `TmplAstNode[]`.
-     */
+    * Parses a template string into Angular template AST nodes.
+    *
+    * @param template Raw template text.
+    * @returns Promise resolving to the parsed `TmplAstNode[]`.
+    */
     static async parseTemplateToAst(template: string): Promise<TmplAstNode[]> {
         logger.debug(`[TemplateUtils] Parsing template string to AST…`);
         const ast = await new AngularTemplateParser().parse(template);
         logger.log(
-            'trace', 
+            'trace',
             `[TemplateUtils] parseTemplateToAst → AST nodes count: %d`,
             ast.length
         );
@@ -126,20 +131,20 @@ export class TemplateUtils {
         return ast;
     }
 
-    // ──────────────── Widget extraction ──────────────────
+    // ──────────────── 3) Widget extraction ──────────────────
 
     /**
-     * Extracts all interactive widgets from an Angular AST.
-     *
-     * @param decorator - The `@Component(...)` decorator node (for selector).
-     * @param ast        - Parsed template AST nodes.
-     * @param template   - The original template text.
-     * @returns Array of `WidgetInfo` trees.
-     */
+    * Extracts all interactive widgets from a parsed Angular AST.
+    *
+    * @param decorator The `@Component(...)` decorator node (to obtain selector).
+    * @param ast       Parsed template AST nodes.
+    * @param template  Original template text (enables precise handler extraction).
+    * @returns Array of `WidgetInfo` roots (each with `children` filled).
+    */
     static extractWidgetsFromAst(decorator: Decorator, ast: TmplAstNode[], template: string) {
         const selector = AstUtils.getSelectorFromDecorator(decorator) ?? '<unknown>';
         logger.log(
-            'trace', 
+            'trace',
             `[TemplateUtils] extractWidgetsFromAst for selector='%s'`,
             selector
         );
@@ -154,17 +159,17 @@ export class TemplateUtils {
         return widgets;
     }
 
-    // ──────────────── Widget-tree helpers ──────────────────
+    // ──────────────── 4) Widget-tree helpers ──────────────────
 
     /**
-     * Flattens a nested array of `WidgetInfo` into a single depth-first list.
-     *
-     * @param tree - Top-level widget hierarchies.
-     * @returns Every widget in the tree, in execution order.
-     */
+    * Flattens a nested array of `WidgetInfo` into a single depth-first list.
+    *
+    * @param tree Top-level widget hierarchies.
+    * @returns Every widget in the tree, depth-first order.
+    */
     static flattenWidgets(tree: WidgetInfo[]): WidgetInfo[] {
         logger.log(
-            'trace', 
+            'trace',
             `[TemplateUtils] flattenWidgets: tree with %d roots`,
             tree.length
         );
@@ -180,23 +185,23 @@ export class TemplateUtils {
 
         walk(tree);
         logger.log(
-            'trace', 
+            'trace',
             `[TemplateUtils] flattenWidgets → total ${flattened.length}`
         );
         return flattened;
     }
 
-    // ──────────────── Nested component discovery ──────────────────
+    // ──────────────── 5) Nested component discovery ──────────────────
 
     /**
-     * Recursively finds all `<app-*>` selectors in the AST (even under `<ng-template>`).
-     *
-     * @param ast - Parsed template AST nodes.
-     * @returns Deduped list of nested component selectors.
-     */
+    * Recursively finds all `<app-*>` selectors in the AST (including under `<ng-template>`).
+    *
+    * @param ast Parsed template AST nodes.
+    * @returns Deduplicated list of nested component selectors (as they appear in the template).
+    */
     static extractNestedComponentsFromAst(ast: TmplAstNode[]): string[] {
         logger.log(
-            'trace', 
+            'trace',
             `[TemplateUtils] extractNestedComponentsFromAst: walking AST of length %d`,
             ast.length
         );
@@ -208,6 +213,7 @@ export class TemplateUtils {
                     const tag = node.name.toLowerCase();
                     if (tag.startsWith('app-')) {
                         logger.log('trace', `[TemplateUtils] Found nested component tag: %s`, node.name);
+                        // Keep original casing as found in the template
                         seen.add(node.name);
                     }
 
@@ -215,8 +221,7 @@ export class TemplateUtils {
                     walk(node.children);
                 }
                 else if (node instanceof TmplAstTemplate) {
-                    // Structural directives (e.g. `*ngIf`, `*ngFor`) appear as TmplAstTemplate,
-                    // so we descend into their children as well:
+                    // Structural directives (e.g., *ngIf, *ngFor) appear as TmplAstTemplate
                     walk(node.children);
                 }
             }

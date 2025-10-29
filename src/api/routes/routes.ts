@@ -1,13 +1,29 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // api/routes/routes.ts
 //
-// Analyzes Angular routing configuration and classifies component usage.
-//   - POST /routes
-//     - Validates `projectRoot` parameter
-//     - Ensures `tsconfig.json` exists
-//     - Discovers components via `ComponentRegistryBuilder`
-//     - Runs `RouteAnalyzer` to build `ComponentRouteMap`
-//     - Returns shallow-serialized routes, redirections, and component roles
+// Express router: runs Angular routing analysis and returns a shallow-serialized
+// ComponentRouteMap (routes, redirections, and role buckets by selector).
+//
+// Endpoint:
+//   POST /routes
+//
+// Request body:
+//   { projectRoot: string }   // absolute path to the Angular workspace root
+//
+// High-level flow:
+//   1) Validate `projectRoot` and resolve its `tsconfig.json`
+//   2) Build a ts-morph Project from that tsconfig
+//   3) Build ComponentRegistry (template-derived metadata)
+//   4) Run RouteAnalyzer.analyzeProject(...) to compute ComponentRouteMap
+//   5) Shallow-serialize roles (selectors only) for transport
+//   6) Return routes, redirections, and roles
+//
+// Success (200):
+//   { success: true, routeMap: { routes, redirections, roles:{root[],global[],shared[],mapped[],dead[]} } }
+//
+// Errors:
+//   400 — missing/invalid `projectRoot`, or `tsconfig.json` not found
+//   500 — any unexpected failure during analysis
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Request, Response, Router } from 'express';
@@ -24,43 +40,47 @@ const router = Router();
 /**
  * POST /routes
  *
- * Runs route analysis to discover all routes and classify component roles.
+ * Builds a ComponentRegistry, runs the RouteAnalyzer, and returns a shallow
+ * serialization of the ComponentRouteMap (including role buckets by selector).
  *
- * Request body:
- *   {
- *     projectRoot: string
- *   }
+ * Request Body:
+ * ```json
+ * { "projectRoot": "/abs/path/to/workspace" }
+ * ```
  *
- * Success Response (200):
- *   {
- *     success: true,
- *     routeMap: {
- *       routes: ComponentRoute[],
- *       redirections: RedirectRoute[],
- *       roles: {
- *         root: string[],
- *         global: string[],
- *         shared: string[],
- *         mapped: string[],
- *         dead: string[]
- *       }
+ * Response (200):
+ * ```json
+ * {
+ *   "success": true,
+ *   "routeMap": {
+ *     "routes": [ /* ComponentRoute[] *\/ ],
+ *     "redirections": [ /* RedirectRoute[] *\/ ],
+ *     "roles": {
+ *       "root":   ["app-root", ...],
+ *       "global": ["app-header", ...],
+ *       "shared": ["app-card", ...],
+ *       "mapped": ["app-dashboard", ...],
+ *       "dead":   ["app-legacy", ...]
  *     }
  *   }
+ * }
+ * ```
  *
- * Error Responses:
- *   400 Bad Request – Missing or invalid `projectRoot`
- *   400 Bad Request – `tsconfig.json` not found under `projectRoot`
- *   500 Internal Server Error – Route analysis failed
+ * Errors:
+ *  - 400: `projectRoot` missing/invalid, or `tsconfig.json` not found
+ *  - 500: analysis failure
  */
 router.post('/', async (req: Request, res: Response) => {
     const { projectRoot } = req.body as { projectRoot?: string };
     logger.debug(`[POST /routes] projectRoot='${projectRoot}'`);
 
+    // Basic param validation
     if (!projectRoot) {
         logger.warn("[POST /routes] Missing projectRoot");
         return res.status(400).json({ success: false, error: 'projectRoot is required' });
     }
 
+    // Resolve tsconfig.json under projectRoot
     const tsConfig = resolveTsConfig(projectRoot);
     if (!tsConfig) {
         logger.warn(`[POST /routes] tsconfig.json not found under '${projectRoot}'`);
@@ -70,23 +90,23 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     try {
-        // Initialize ts-morph project
+        // Initialize ts-morph Project from the resolved tsconfig
         logger.info(`[POST /routes] Initializing ts-morph project from ${tsConfig}`);
         const project = new Project({ tsConfigFilePath: tsConfig });
 
-        // Phase 1: Discover all components for route-analysis
+        // Phase 1: Build ComponentRegistry (template parsing → widgets & nested selectors)
         logger.info('[POST /routes] Building component registry for route analysis…');
         const compRegistry: ComponentRegistry = await new ComponentRegistryBuilder(project).buildComponentsRegistry();
         logger.info(
             `[POST /routes] Component registry built with ${compRegistry.components.length} components`
         );
-
-        // Phase 2: Analyze routes
+        
+        // Phase 2: Run RouteAnalyzer over the discovered components
         logger.info('[POST /routes] Running RouteAnalyzer…');
         const analyzer = new RouteAnalyzer(project);
         const compRouteMap: ComponentRouteMap = await analyzer.analyzeProject(compRegistry);
 
-        // Shallow-serialize the roles (selectors only)
+        // Shallow-serialize role buckets to avoid returning full ComponentInfo objects
         const dump = {
             routes: compRouteMap.routeMap.routes,
             redirections: compRouteMap.routeMap.redirections,
@@ -101,8 +121,10 @@ router.post('/', async (req: Request, res: Response) => {
 
         logger.info('[POST /routes] Analysis complete; returning routeMap with roles %o', dump.roles);
 
+        // Success response
         return res.json({ success: true, routeMap: dump });
     } catch (err: any) {
+        // Unhandled error: log and return 500
         logger.error('[POST /routes] Fatal error: %o', err);
         return res
             .status(500)

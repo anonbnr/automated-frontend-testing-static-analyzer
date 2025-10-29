@@ -1,16 +1,41 @@
+// ──────────────────────────────────────────────────────────────────────────────
 // builders/user-journeys/user-journey-artifact-validator.ts
+//
+//  user-journey-artifact-validator
+//  -------------------------------
+//  Sanity checks for user journey artifacts vs. the navigation graph.
+//  - Verifies that every step.nodeId appears in the graph (with helpful base-id suggestions).
+//  - Checks tail type consistency: step.stepType matches graph node type.
+//  - Warns if widget steps look like "base" ids (no hex suffix) when hex suffixes are expected.
+//  
+//  This module is advisory (non-throwing). It logs actionable diagnostics.
+// ──────────────────────────────────────────────────────────────────────────────
+
 import logger from "../../logging/logger.js";
 import { AppNavigation } from "../../models/navigation-graph.js";
 import { UserJourney } from "../../models/user-journeys/user-journey-info.js";
 
+/** Matches a trailing "__deadbeef" style suffix (8 hex chars) at path segment boundary. */
 const HEX8 = /__(?:[0-9a-f]{8})(?=($|\/))/i;
 
+/**
+ * Produce a "base" id for matching/suggestion:
+ * - Keep full URLs unchanged (we don't strip suffixes in external nodes).
+ * - Otherwise strip a trailing "__deadbeef" segment suffix if present.
+ */
 function baseId(id: string): string {
     // Preserve URLs; otherwise strip a trailing "__deadbeef" style suffix if present.
     if (/https?:\/\//i.test(id)) return id;
     return id.replace(HEX8, "");
 }
 
+/**
+ * Validate a set of user journeys against a graph.
+ *
+ * @param graph       Full navigation graph.
+ * @param journeys    Journeys to validate.
+ * @param sampleLimit How many missing-id examples to print at most (default: 10).
+ */
 export function validateUserJourneyArtifacts(
     graph: AppNavigation,
     journeys: UserJourney[],
@@ -18,7 +43,7 @@ export function validateUserJourneyArtifacts(
 ): void {
     const nodeIds = new Set(graph.nodes.map(n => n.id));
 
-    // base-id → all graph ids that share that base
+    // Build a base-id index for suggestions (handles "__deadbeef" suffix variants).
     const baseIndex = new Map<string, string[]>();
     for (const n of graph.nodes) {
         const b = baseId(n.id);
@@ -27,6 +52,7 @@ export function validateUserJourneyArtifacts(
         baseIndex.set(b, arr);
     }
 
+    // 1) Missing IDs with suggestions/ambiguity
     let missing = 0;
     const examples: Array<
         { stepType: string; nodeId: string; suggested?: string; ambiguous?: string[] }
@@ -68,7 +94,7 @@ export function validateUserJourneyArtifacts(
         logger.info("[UserJourneyValidator] All user journey step nodeIds are aligned with the navigation graph.");
     }
 
-    // Sanity: tail type vs node type
+    // 2) Sanity: tail type vs. node type
     let typeMismatch = 0;
     for (const j of journeys) {
         const tail = j.steps[j.steps.length - 1];
@@ -85,6 +111,8 @@ export function validateUserJourneyArtifacts(
         logger.debug("[UserJourneyValidator] No tail type mismatches.");
     }
 
+    // 3) Heuristic: widget steps that look like "base ids" (no hex suffix).
+    //    This may indicate pre-resolution artifacts or missing widget hashing.
     let baseLookingWidgets = 0;
     for (const j of journeys) {
         for (const st of j.steps) {
@@ -93,6 +121,9 @@ export function validateUserJourneyArtifacts(
     }
 
     if (baseLookingWidgets) {
-        logger.debug("[UserJourneyValidator] %d widget steps look like base ids (no hex suffix).", baseLookingWidgets);
+        logger.debug(
+            "[UserJourneyValidator] %d widget steps look like base ids (no hex suffix).",
+            baseLookingWidgets
+        );
     }
 }

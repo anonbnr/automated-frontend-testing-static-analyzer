@@ -1,72 +1,82 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // parsers/ast-utils.ts
 //
-// Central AST utilities for ts-morph-based analysis, including:
+// Purpose
+//   Central ts-morph helpers used across analyzers to read decorator/object
+//   literals, extract Angular @Component metadata, and convert between selector
+//   and class-name conventions.
 //
-// 1. **ObjectLiteralExpression** helpers:
-//    - hasProp                   — check for a property by name
-//    - getPropAsText             — read a string or identifier value
-//    - getPropAsStringArray      — read an array of string literals
-//    - getPropAsObjectLiteral    — read an object literal into a plain map
-//    - getPropInitializer        — get the raw Expression for further inspection
+// Provided helpers
+// 1) ObjectLiteralExpression
+//    - hasProp                : check for a property by name
+//    - getPropAsText          : read a scalar initializer value as text (unquoted)
+//    - getPropAsStringArray   : read an array of string/identifier elements
+//    - getPropAsObjectLiteral : read a shallow object literal as a plain map
+//    - getPropInitializer     : get the raw initializer Expression
 //
-// 2. **Decorator** helpers (Angular `@Component`):
-//    - getComponentObjectLiteral — locate the object literal in `@Component(...)`
-//    - getPropertyFromDecorator  — read a string property (selector, templateUrl, etc.)
-//    - getSelectorFromDecorator  — extract the component’s selector
-//    - getClassNameFromDecorator — infer the component’s class name
+// 2) Decorator (@Component) helpers
+//    - getComponentObjectLiteral : locate the object literal in @Component(...)
+//    - getPropertyFromDecorator  : read a string property (selector, templateUrl, …)
+//    - getSelectorFromDecorator  : extract the component selector
+//    - getClassNameFromDecorator : infer the component class name
 //
-// 3. **Component scanning**:
-//    - getPrimaryComponentClass  — find the first `@Component` class in a SourceFile
+// 3) Component scanning
+//    - getPrimaryComponentClass  : find the first @Component class in a file
 //
-// 4. **Selector ↔ ClassName**:
-//    - convertSelectorToClassName — map kebab-case selector to PascalCase class name
-//    - convertClassNameToSelector — map PascalCase class name to kebab-case selector
+// 4) Selector ↔ ClassName
+//    - convertSelectorToClassName : "app-foo-bar" → "FooBarComponent"
+//    - convertClassNameToSelector : "FooBarComponent" → "foo-bar"
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { ClassDeclaration, Decorator, Expression, ObjectLiteralExpression, PropertyAssignment, SourceFile, SyntaxKind } from "ts-morph";
 
 export class AstUtils {
-    // ──────────────── ObjectLiteralExpression Helpers ────────────────
-    /**
-     * Returns true if `obj` has a property assignment named `key`.
-     */
-    static hasProp(obj: ObjectLiteralExpression, key: string): boolean {
-        return obj.getProperty(key) !== undefined;
+    // ──────────────── Internal helpers ────────────────
+
+    /** Strip wrapping single/double/backtick quotes if present. */
+    private static _stripQuotes(text: string): string {
+        return text.replace(/^['"`](.*)['"`]$/s, "$1");
     }
 
-    /**
-     * Returns the property assignment named `key` of `obj`
-     */
-    private static _getAssignment(obj: ObjectLiteralExpression, key: string): PropertyAssignment | undefined {
+    /** Safe `.getText()` + unquote helper. */
+    private static _textOf(expr: Expression | undefined): string | undefined {
+        return expr ? this._stripQuotes(expr.getText()) : undefined;
+    }
+
+    /** Returns the property assignment named `key` of `obj`, if it exists. */
+    private static _getAssignment(
+        obj: ObjectLiteralExpression,
+        key: string
+    ): PropertyAssignment | undefined {
         const prop = obj.getProperty(key);
         return prop?.asKind(SyntaxKind.PropertyAssignment);
     }
 
-    /**
-     * Returns the raw `Expression` initializer for `key`, or undefined if none.
-     */
+    // ──────────────── ObjectLiteralExpression Helpers ────────────────
+
+    /** True if `obj` has a property named `key`. */
+    static hasProp(obj: ObjectLiteralExpression, key: string): boolean {
+        return obj.getProperty(key) !== undefined;
+    }
+
+    /** Raw initializer Expression for `key`, or `undefined` if absent. */
     static getPropInitializer(obj: ObjectLiteralExpression, key: string): Expression | undefined {
         const assign = this._getAssignment(obj, key);
-        const init = assign?.getInitializer();
-        return init;
+        return assign?.getInitializer();
     }
 
     /**
-     * Reads `key: 'text'` or `key: identifier` (or any initializer),
-     * strips any surrounding quotes, and returns its text.
-     * If missing or not a PropertyAssignment, returns undefined.
-     */
+    * Read `key: 'text'`, `key: "text"`, `key: identifier`, or any initializer
+    * as unquoted text. Returns `undefined` if missing.
+    */
     static getPropAsText(obj: ObjectLiteralExpression, key: string): string | undefined {
-        return this.getPropInitializer(obj, key)
-            ?.getText()
-            .replace(/^['"`](.*)['"`]$/s, "$1");
+        return this._textOf(this.getPropInitializer(obj, key));
     }
 
     /**
-     * Reads `key: [ A, B, C ]` where each element is a literal or identifier.
-     * Returns an array of their stripped-text values, or [] if none.
-     */
+    * Read `key: [ A, B, C ]` where each element is a literal or identifier and
+    * return an array of their unquoted text forms. Returns `[]` if missing.
+    */
     static getPropAsStringArray(obj: ObjectLiteralExpression, key: string): string[] {
         const init = this.getPropInitializer(obj, key);
         if (!init?.isKind(SyntaxKind.ArrayLiteralExpression))
@@ -75,45 +85,42 @@ export class AstUtils {
         return init
             .asKindOrThrow(SyntaxKind.ArrayLiteralExpression)
             .getElements()
-            .map(el => el
-                .getText()
-                .replace(/^['"`](.*)['"`]$/s, "$1")
-            );
+            .map((el) => this._stripQuotes(el.getText()));
     }
 
     /**
-     * Reads `key: { a: X, b: Y }` and returns a plain `{ a: text(X), b: text(Y) }`.
-     * If missing or not an object literal, returns `{}`.
-     */
+    * Read `key: { a: X, b: Y }` and return a shallow plain map
+    * `{ a: text(X), b: text(Y) }`. Returns `{}` if missing or not an object.
+    *
+    * Notes:
+    *  • Only handles `PropertyAssignment` entries (no spread/shorthand).
+    *  • Keys are returned as written (quoted/unquoted names both normalized to text).
+    */
     static getPropAsObjectLiteral(obj: ObjectLiteralExpression, key: string): Record<string, string> {
         const init = this.getPropInitializer(obj, key);
         if (!init?.isKind(SyntaxKind.ObjectLiteralExpression))
             return {};
 
         const result: Record<string, string> = {};
-        for (const p of init.asKindOrThrow(SyntaxKind.ObjectLiteralExpression).getProperties()) {
+        const objLit = init.asKindOrThrow(SyntaxKind.ObjectLiteralExpression);
+
+        for (const p of objLit.getProperties()) {
             if (!p.isKind(SyntaxKind.PropertyAssignment))
                 continue;
 
             const pa = p as PropertyAssignment;
-            const v = pa.getInitializer();
-            if (!v)
-                continue;
-
-            result[pa.getName()] = v
-                .getText()
-                .replace(/^['"`](.*)['"`]$/s, "$1");
+            const k = this._stripQuotes(pa.getName());
+            const v = this._textOf(pa.getInitializer());
+            if (v !== undefined) result[k] = v;
         }
         return result;
     }
 
     // ──────────────── Decorator Helpers (Angular @Component) ────────────────
+
     /**
-     * Retrieves the ObjectLiteralExpression passed to `@Component(...)`.
-     *
-     * @param decorator  The ts-morph Decorator node for `@Component`.
-     * @returns          The object literal, or `undefined` if not found.
-     */
+    * Retrieve the object literal passed to `@Component(...)`, if any.
+    */
     static getComponentObjectLiteral(decorator: Decorator): ObjectLiteralExpression | undefined {
         const args = decorator.getArguments();
         if (!args.length)
@@ -123,44 +130,34 @@ export class AstUtils {
     }
 
     /**
-     * Reads a string property (e.g. 'selector', 'templateUrl') from the @Component decorator.
-     *
-     * @param decorator  The ts-morph Decorator node for `@Component`.
-     * @param name       The property name to read.
-     * @returns          The unquoted string value, or `undefined` if missing.
-     */
+    * Read a string-like property (e.g., "selector", "templateUrl") from the \@Component decorator.
+    * Returns the unquoted value, or `undefined` if missing.
+    */
     static getPropertyFromDecorator(decorator: Decorator, name: string): string | undefined {
         const objLiteral = this.getComponentObjectLiteral(decorator);
-        return objLiteral && this.getPropAsText(objLiteral, name);
+        return objLiteral ? this.getPropAsText(objLiteral, name) : undefined;
     }
 
-    /**
-     * Extracts `selector: 'app-…'` from the @Component decorator.
-     *
-     * @param decorator  The ts-morph Decorator node for `@Component`.
-     * @returns          The selector (e.g. 'app-header'), or `undefined` if not present.
-     */
+    /** Extract `selector: 'app-…'` from the \@Component decorator. */
     static getSelectorFromDecorator(decorator: Decorator): string | undefined {
         return this.getPropertyFromDecorator(decorator, 'selector');
     }
 
     /**
-     * Infers the component class name by walking up from the decorator
-     * to its parent ClassDeclaration.
-     *
-     * @param decorator  The ts-morph Decorator node for `@Component`.
-     * @returns          The class name (e.g. 'MyHeaderComponent'), or `undefined` if unavailable.
-     */
+    * Infer the component class name by walking up from the decorator
+    * to its parent `ClassDeclaration`.
+    */
     static getClassNameFromDecorator(decorator: Decorator): string | undefined {
         const cls = decorator.getFirstAncestorByKind(SyntaxKind.ClassDeclaration);
         return cls?.getName();
     }
 
     // ──────────────── Selector ↔ ClassName ────────────────
+
     /**
-     * Converts a kebab-case selector (e.g. `app-foo-bar`) into a
-     * PascalCase class name (e.g. `FooBarComponent`).
-     */
+    * "app-foo-bar" → "FooBarComponent".
+    * If the selector has no hyphen (no prefix), returns "".
+    */
     static convertSelectorToClassName(selector: string): string {
         const parts = selector.split("-");
         return parts.length > 1
@@ -173,14 +170,8 @@ export class AstUtils {
     }
 
     /**
-     * Inverse of `convertSelectorToClassName()`: given `FooBarComponent`
-     * returns `"foo-bar"`.  (Does *not* re-add any prefix like `"app-"`.)
-     *
-     * @param className
-     *   The component’s class name (e.g. `"FooBarComponent"`).
-     * @returns
-     *   The kebab-case base selector (e.g. `"foo-bar"`).
-     */
+    * "FooBarComponent" → "foo-bar" (does *not* add "app-" or any prefix).
+    */
     static convertClassNameToSelector(className: string): string {
         // Strip the "Component" suffix if present
         const base = className.replace(/Component$/, "");
@@ -193,9 +184,9 @@ export class AstUtils {
 
     // ──────────────── Component Scanning ────────────────
     /**
-     * Returns the first `ClassDeclaration` in `file` decorated with `@Component(...)`,
-     * or `undefined` if none is found.
-     */
+    * Return the first class in `file` that is decorated with `@Component(...)`,
+    * or `undefined` if none is found.
+    */
     static getPrimaryComponentClass(file: SourceFile): ClassDeclaration | undefined {
         return file
             .getClasses()

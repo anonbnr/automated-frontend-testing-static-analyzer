@@ -1,27 +1,41 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // builders/navigation-graph-builder.ts
 //
-// Constructs the navigation **multigraph** for an Angular app.
-// 
-// Static graph:
-//   - modules → modules (imports)
-//   - modules → components (declares)
-//   - modules → routes
-//   - routes → components
-//   - components → nested-components
-//   - components → widgets → nested-widgets
+// Purpose
+//   Construct the application navigation **multigraph** composed of:
+//   • Static structure (modules, components, routes, widgets, nesting)
+//   • Dynamic transitions (lazy-loads, redirects, routerLink/href/navigate,
+//     service/backend calls, and UI-only virtual effects)
 //
-// Dynamic graph:
-//   - lazy-load      (module → module via loadChildren)
-//   - static-redirect (route → route redirects)
-//   - routerLink/navigate (widget → route)
-//   - href           (widget → external-route)
-//   - other events   (widget → virtual-route)
+// Static graph
+//   - module ──declares──▶ component
+//   - module ──imports ──▶ module
+//   - module ──contains──▶ route
+//   - route  ──contains──▶ component
+//   - component ──contains──▶ nested component(s)
+//   - component ──contains──▶ widgets ──contains──▶ nested widgets
 //
-// Entry points:
+// Dynamic graph (GraphTransition):
+//   - lazy-load       : module ──lazy-load──▶ module
+//   - static-redirect : route  ──static-redirect──▶ route
+//   - routerLink      : widget ──routerLink──▶ route (or external-route)
+//   - navigate        : widget ──navigate/ngNav──▶ route
+//   - href            : widget ──href──▶ external-route
+//   - service-call    : widget ──service-call──▶ backend(/service(/method))
+//   - ui-effect       : widget ──<event>──▶ virtual-route (/ui/...)
+//   - submit          : submit-trigger widget ──submit──▶ nearest ancestor <form> widget
+//
+// Entry points
 //   - buildStatic(compRouteMap, moduleRegistry, componentRegistry)
-//   - buildDynamic(compRouteMap, moduleRegistry, componentRegistry, widgetEventMaps)
+//   - buildDynamic(compRouteMap, moduleRegistry, widgetEventMaps)
 //   - getGraph(): AppNavigation
+//
+// Notes
+//   • Node IDs are normalized to collapse duplicate slashes (URLs preserved).
+//   • Duplicate nodes/edges/transitions are de-duplicated.
+//   • Known route canonicalization is delegated to RoutingUtils.
+//   • Widget “effective” type is derived via WidgetUtils.wType for consistent attributes.
+//
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { LogicUtils } from "../analyzers/business-logic/logic-utils.js";
@@ -40,17 +54,17 @@ import { AstUtils } from "../parsers/ast-utils.js";
 /**
  * NavigationGraphBuilder
  *
- * Orchestrates building both the **static** and **dynamic** portions
- * of an application's navigation multigraph.
+ * Orchestrates construction of the static topology and dynamic transitions
+ * for the Angular application's navigation multigraph.
  */
 export class NavigationGraphBuilder {
-    /** Map of nodeId → GraphNode (de-duplicated) */
+    /** Map of nodeId → GraphNode (ensures uniqueness of nodes). */
     private nodes = new Map<string, GraphNode>();
 
-    /** All static “contains” / “imports” / “declares” edges */
+    /** Static edges (module/component/route/widget containment & imports/declares). */
     private edges: GraphEdge[] = [];
 
-    /** All dynamic event-driven or navigation transitions */
+    /** Dynamic transitions (runtime navigations, redirects, backend calls, etc.). */
     private transitions: GraphTransition[] = [];
 
     constructor(private cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG) { }
@@ -60,18 +74,11 @@ export class NavigationGraphBuilder {
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Build the **static** graph:
-     * 1. modules → imports
-     * 2. modules → declares components
-     * 3. modules → routes
-     * 4. routes → components
-     * 5. components → nested‐components
-     * 6. components → widgets → nested‐widgets
-     *
-     * @param compRouteMap - raw routes + roles
-     * @param moduleRegistry - all NgModule metadata
-     * @param componentRegistry - all ComponentInfo metadata
-     */
+    * Build the **static** portion of the graph in three passes:
+    *  1) Register modules (+ imports/declares)
+    *  2) Register routes (+ module → route linkage if known)
+    *  3) Register components (+ nested-components + widget trees)
+    */
     buildStatic(
         compRouteMap: ComponentRouteMap,
         moduleRegistry: ModuleRegistry,
@@ -89,15 +96,12 @@ export class NavigationGraphBuilder {
     }
 
     /**
-     * Build the **dynamic** transitions in the following order:
-     * 1. lazy-load (module → module)
-     * 2. static-redirect (route → route)
-     * 3. widget events (routerLink, navigate, href, virtual-route)
-     *
-     * @param compRouteMap - raw routes + roles
-     * @param moduleRegistry - all NgModule metadata
-     * @param widgetEventMaps - business-logic–derived widget→EventContext maps
-     */
+    * Build the **dynamic** transitions in this order:
+    *  1) Module-level lazy-load links (module → module)
+    *  2) Route-level static redirects (route → route)
+    *  3) Widget-driven transitions (routerLink/href/navigate/backend/ui-effect)
+    *  4) Submit-trigger widget → nearest ancestor <form> binding
+    */
     buildDynamic(
         compRouteMap: ComponentRouteMap,
         moduleRegistry: ModuleRegistry,
@@ -115,9 +119,7 @@ export class NavigationGraphBuilder {
         this._registerFormFieldTransitions();
     }
 
-    /**
-     * @returns the assembled navigation multigraph
-     */
+    /** Return the assembled multigraph snapshot. */
     getGraph(): AppNavigation {
         logger.log('trace', "[NavigationGraph] getGraph()");
         return {
@@ -132,20 +134,19 @@ export class NavigationGraphBuilder {
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Register every NgModule node, plus its “imports” & “declares” edges.
-     *
-     * @param moduleRegistry - all NgModule metadata
-     * @param componentRegistry - all ComponentInfo metadata
-     */
+    * Register every NgModule node, plus:
+    *  - module → declares → component edges (by selector)
+    *  - module → imports  → module edges
+    */
     private _registerModules(
         moduleRegistry: ModuleRegistry,
         componentRegistry: ComponentRegistry
     ): void {
         for (const mod of moduleRegistry.modules) {
-            // registers module node in the graph
+            // module node with role attribute (root/routing/external/shared/global)
             this._addNode(mod.name, "module", { attributes: { role: mod.role } });
 
-            // module → declares → component
+            // module → declares → component (resolve selector; fall back to heuristic)
             for (const compCls of mod.declarations) {
                 const compSel = componentRegistry.getByName(compCls)?.selector
                     ?? AstUtils.convertClassNameToSelector(compCls);
@@ -162,10 +163,9 @@ export class NavigationGraphBuilder {
     }
 
     /**
-     * Register every route node and link its declaring module → route.
-     *
-     * @param compRouteMap - raw routes + roles
-     */
+    * Register route nodes and (if known) connect their declaring module → route.
+    * Route node attributes preserve guards, resolvers, data, and pathMatch.
+    */
     private _registerRoutes(compRouteMap: ComponentRouteMap): void {
         for (const compR of compRouteMap.routeMap.routes) {
             this._addNode(compR.route, "route", {
@@ -179,72 +179,74 @@ export class NavigationGraphBuilder {
                 }
             });
             if (compR.module)
+                // module → route containment (declaring module known from earlier assignment)
                 this._addStaticEdge(compR.module, compR.route);
         }
     }
 
     /**
-     * Register every component (with role), its nested‐component edges,
-     * and the entire widget subtrees.
-     *
-     * @param compRouteMap - raw routes + roles
-     * @param componentRegistry - all ComponentInfo metadata
-     */
+    * Register all component nodes (with role), connect:
+    *  - route → component (for each route mapping the selector)
+    *  - component → nested component(s)
+    *  - component → widgets (entire widget subtree)
+    */
     private _registerComponents(
         compRouteMap: ComponentRouteMap,
         componentRegistry: ComponentRegistry
     ): void {
         for (const ci of componentRegistry.components) {
             const role = this._lookupComponentRole(ci.selector, compRouteMap.roles);
-            // registers component node in the graph
+
+            // component node with role attribute
             this._addNode(ci.selector, "component", { attributes: { role } });
 
-            // route → component
+            // route → component for each direct mapping
             for (const path of RoutingUtils.getRoutesFromSelector(ci.selector, compRouteMap.routeMap))
                 this._addStaticEdge(path, ci.selector);
 
-            // component → nested-component
+            // component → nested-component edges
             for (const child of ci.nestedComponents) {
                 this._addNode(child, "component");
                 this._addStaticEdge(ci.selector, child);
             }
 
-            // component → widgets & nested-widgets
+            // component → widgets (flattened recursively)
             for (const w of ci.widgets)
                 this._registerWidgets(w, ci.selector);
         }
     }
 
     /**
-     * Recursively register a widget and any nested widgets.
-     *
-     * @param widget - widget metadata
-     * @param parentId - ID of the containing component/widget
-     */
+    * Recursively register a widget and any nested widgets, attaching:
+    *  - attributes (original + effective widgetType + declared events)
+    *  - validationRules (if present)
+    *  - contains edge from its parent (component or widget)
+    */
     private _registerWidgets(
         widget: WidgetInfo,
         parentId: string
     ): void {
-        // compute the *effective* widget‐type once
+        // compute effective type once for consistent metadata
         const effectiveType = WidgetUtils.wType(widget);
-        // merge in original attrs + our effective widgetType
+
+        // merge original attributes + effective type + declared events
         const metaAttrs = {
             ...widget.attributes,
             events: widget.events,
             widgetType: effectiveType
         };
 
-        // 1) register this widget as a node
+        // widget node
         this._addNode(widget.id, "widget", {
             attributes: metaAttrs,
             validationRules: widget.validationRules,
             triggersFormSubmission: widget.triggersFormSubmission,
         });
 
-        // 2) connect it to its parent (component or parent widget)
+        // parent ──contains──▶ widget
         this._addStaticEdge(parentId, widget.id);
 
-        // 3) dive into any nested widgets
+        // nested widgets
         for (const child of widget.children || [])
             this._registerWidgets(child, widget.id);
     }
@@ -254,12 +256,10 @@ export class NavigationGraphBuilder {
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Emit `lazy-load` transitions for every `loadChildren` route.
-     * Creates an edge from the **declaring** module → each **target** module.
-     *
-     * @param compRouteMap - raw routes + roles
-     * @param moduleRegistry - all NgModule metadata
-     */
+    * Emit module → module `lazy-load` transitions for each route with `loadChildren`.
+    * The "from" side is the route's declaring module; the "to" module(s) are parsed
+    * from the `then(m => m.TargetModule)` patterns.
+    */
     private _registerLazyLoadTransitions(
         compRouteMap: ComponentRouteMap,
         moduleRegistry: ModuleRegistry
@@ -287,10 +287,8 @@ export class NavigationGraphBuilder {
     }
 
     /**
-     * Emit `static-redirect` transitions for every redirect‐only route.
-     *
-     * @param compRouteMap - raw routes + roles
-     */
+    * Emit route → route `static-redirect` transitions based on redirect entries.
+    */
     private _registerRedirectTransitions(compRouteMap: ComponentRouteMap): void {
         for (const rd of compRouteMap.routeMap.redirections) {
             this._addNode(rd.route, "route", { attributes: { pathMatch: rd.pathMatch } });
@@ -306,52 +304,46 @@ export class NavigationGraphBuilder {
 
     /**
     * Emit widget-driven transitions:
-    *  1) skip empty targets
-    *  2) href → external-route
-    *  3) routerLink → route (canonicalized) or external-route, else virtual-route
-    *  4) router.navigate/navigateByUrl → route (canonicalized)
-    *  5) backend (service/http) → virtual-route under /backend (per config)
-    *  6) remaining → literal route if known, else virtual-route
-     *
-     * @param compRouteMap - raw routes + roles
-     * @param widgetEventMaps - business-logic maps
-     */
+    *  - href → external-route
+    *  - routerLink → route (canonicalized) | external-route | (else) virtual-route
+    *  - router.navigate / navigateByUrl([...]) → route (canonicalized)
+    *  - backend/service/http calls → /backend(/service(/method)) per config granularity
+    *  - UI-only effects → virtual-route (/ui/<widget>/<label>)
+    */
     private _registerWidgetTransitions(
         compRouteMap: ComponentRouteMap,
         widgetEventMaps: WidgetEventMap[]
     ): void {
         const knownRoutes = new Set(compRouteMap.routeMap.routes.map(r => r.route));
-
-        // small local helper
         const ensureLeadingSlash = (s: string) => (s.startsWith('/') ? s : `/${s}`);
 
         for (const wem of widgetEventMaps) {
             for (const ev of wem.eventContexts) {
-                // Accumulate per event
-                const navTargets = new Set<string>();            // routes only
-                const backendCalls = new Map<string, { service: string; method: string }>(); // key=service.method
-                const uiEffects: string[] = [];                  // kept in metadata only
+                // Working sets for this event context
+                const navTargets = new Set<string>(); // resolved route targets
+                const backendCalls = new Map<string, { service: string; method: string }>(); // unique by "service.method"
+                const uiEffects: string[] = []; // record for metadata only
 
                 for (const call of ev.callContexts) {
                     const called = String(call.called || '').trim();
                     // 1) skip empty targets
                     if (!called) continue;
 
-                    // 2) href → external-route (absolute URLs or any href literal)
+                    // 2) href → external-route (literal URL)
                     if (ev.event === 'href') {
                         this._addNode(called, 'external-route');
                         this._addDynamicTransition(wem.widgetID, called, ev.event, { params: call.data, handler: ev.handler });
                         continue;
                     }
 
-                    // 3) routerLink → canonical route / external / virtual
+                    // 3) routerLink → try canonical known route (or external/virtual higher up)
                     if (ev.event === 'routerLink') {
                         const canonical = RoutingUtils.canonicalizeToKnownRoute(ensureLeadingSlash(called), knownRoutes);
                         if (knownRoutes.has(canonical)) navTargets.add(canonical);
                         continue;
                     }
 
-                    // 4) router.navigate/navigateByUrl([...]) → route
+                    // 4) router.navigate / navigateByUrl([...]) → join segments then canonicalize
                     const isNav = LogicUtils.isRouterNavigateCall(`${call.caller}.${call.called}`)
                         && Array.isArray(call.data) && call.data.length;
 
@@ -362,12 +354,12 @@ export class NavigationGraphBuilder {
                         continue;
                     }
 
-                    // 5) backend (sentinel or caller heuristic) → virtual-route under /backend
+                    // 5) backend/service/http calls → /backend(/service(/method))
                     const isBackend = (Array.isArray(call.data) && call.data[0] === '/backend')
                         || LogicUtils.isBackendServiceCaller(call.caller, this.cfg);
 
                     if (isBackend) {
-                        // skip noisy calls
+                        // drop configured noise methods
                         if (this.cfg.noise.methodNames.has(call.called)) continue;
 
 
@@ -380,18 +372,18 @@ export class NavigationGraphBuilder {
                         continue;
                     }
 
-                    // 6) Everything else is a UI-only effect → keep off the graph
+                    // 6) Everything else is UI-only side-effects (record for metadata; no nav/endpoint)
                     uiEffects.push(called);
                 }
 
-                // 1) route nav (at most one)
+                // Emit resolved route navigation (choose one deterministically)
                 const nav = Array.from(navTargets).sort()[0];
                 if (nav) {
                     this._addNode(nav, 'route');
                     this._addDynamicTransition(wem.widgetID, nav, ev.event, { handler: ev.handler, uiEffects });
                 }
 
-                // 2) backend calls
+                // Emit backend service-call transitions per config granularity
                 for (const { service, method } of backendCalls.values()) {
                     const base = '/backend';
                     const g = this.cfg.backend.granularity;
@@ -404,7 +396,7 @@ export class NavigationGraphBuilder {
                     this._addDynamicTransition(wem.widgetID, target, 'service-call', { service, method, sourceEvent: ev.event, handler: ev.handler, uiEffects });
                 }
 
-                // 3) UI-only effects → emit *virtual* target
+                // If no route nav and no backend calls → emit a virtual UI-effect target
                 if (!nav && backendCalls.size === 0) {
                     const label = (ev.handler && ev.handler.trim()) || uiEffects[0] || String(ev.event);
                     const target = `/ui/${wem.widgetID}/${label}`;
@@ -423,42 +415,39 @@ export class NavigationGraphBuilder {
     }
 
     /**
-    * For each widget that *triggers* form submission (e.g. <button type="submit">),
-    * add exactly one dynamic transition to its nearest ancestor <form>:
+    * For each widget that *triggers* form submission (e.g., <button type="submit">),
+    * add a single 'submit' transition to its nearest ancestor <form> widget:
     *
     *   (submit-trigger widget) --submit--> (form widget)
     *
-    * The form itself remains the only node that has submit→route/backend transitions.
-    * No field-level input/change duplication is added.
+    * The <form> node itself remains the entity that can own submit→route/backend
+    * transitions; field-level events are not duplicated as submit transitions.
     */
-
     private _registerFormFieldTransitions(): void {
         for (const node of this.nodes.values()) {
             if (node.type !== 'widget') continue;
 
-            // const wt = (node.attributes?.widgetType as string) || '';
             const isSubmitTrigger =
                 node.triggersFormSubmission === true;
-
             if (!isSubmitTrigger) continue;
 
             const formId = this._findNearestAncestorForm(node.id);
             if (!formId) continue;
 
-            // Single edge from the trigger to the form, typed as 'submit'.
-            // Keep the original source event in metadata for traceability.
+            // Single, canonical submit link from the trigger to the form
             this._addDynamicTransition(node.id, formId, 'submit', { sourceEvent: 'click' });
         }
 
     }
 
     /**
-    * Walks static 'contains' edges upward to find the nearest ancestor <form> widget.
+    * Walk static 'contains' edges upward from a widget to find the nearest
+    * ancestor widget whose effective type is 'form'.
     */
     private _findNearestAncestorForm(startId: string): string | undefined {
         let cur = startId;
 
-        // Look up the parent by scanning static 'contains' edges (to = cur).
+        // Find parent via static 'contains' edges: (parent ──contains──▶ child)
         const findParent = (childId: string) =>
             this.edges.find(e => e.type === 'contains' && e.to === childId)?.from;
 
@@ -475,18 +464,14 @@ export class NavigationGraphBuilder {
         }
     }
 
-
     // ──────────────────────────────────────────────────────────────────────────
     // PRIVATE HELPERS: NODES & EDGES
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Add a node if missing.
-     *
-     * @param rawId   The raw identifier (route, selector, widget ID, URL).
-     * @param type    Semantic node type.
-     * @param partial Optional extra fields (attributes, validationRules, etc.).
-     */
+    * Add a node if missing. Full URLs are preserved; other IDs have duplicate
+    * slashes collapsed via `_normalizeId`.
+    */
     private _addNode(
         rawId: string,
         type: GraphNodeType,
@@ -500,12 +485,10 @@ export class NavigationGraphBuilder {
     }
 
     /**
-     * Add a static edge if it doesn’t already exist.
-     *
-     * @param from Source node ID.
-     * @param to   Destination node ID.
-     * @param type Relation type (default "contains").
-     */
+    * Add a static edge if not already present.
+    *
+    * @param type Defaults to 'contains', but also used for 'imports'/'declares'.
+    */
     private _addStaticEdge(
         rawFrom: string,
         rawTo: string,
@@ -535,13 +518,8 @@ export class NavigationGraphBuilder {
     }
 
     /**
-     * Add a dynamic transition if missing.
-     *
-     * @param from     Widget or route node ID.
-     * @param to       Target node ID.
-     * @param type     Event or nav relation type.
-     * @param metadata Optional metadata (e.g. route params).
-     */
+    * Add a dynamic transition if not already present.
+    */
     private _addDynamicTransition(
         rawFrom: string,
         rawTo: string,
@@ -574,16 +552,9 @@ export class NavigationGraphBuilder {
     }
 
     /**
-     * Determine a component’s role classification based on the ComponentRouteMap.
-     *
-     * @param selector
-     *   The kebab-case component selector (e.g. `'app-header'`).
-     * @param roles
-     *   A record mapping each ComponentRouteRole (`root`, `global`, `shared`, `mapped`, `dead`)
-     *   to the array of ComponentInfo objects in that role.
-     * @returns
-     *   The ComponentRouteRole assigned to the component whose selector was provided.
-     */
+    * Look up the role assigned to a component in the ComponentRouteMap.
+    * Defaults to 'mapped' if not matched in any explicit role array.
+    */
     private _lookupComponentRole(
         selector: string,
         roles: Record<ComponentRouteRole, ComponentInfo[]>
@@ -592,38 +563,15 @@ export class NavigationGraphBuilder {
         if (roles.global.some(c => c.selector === selector)) return 'global';
         if (roles.shared.some(c => c.selector === selector)) return 'shared';
         if (roles.mapped.some(c => c.selector === selector)) return 'mapped';
-        return 'mapped';  // default
-    }
-
-    /** helper: walk static 'contains' edges to collect all descendants of a node */
-    private _collectDescendants(rootId: string): string[] {
-        const out: string[] = [];
-        const stack = [rootId];
-        while (stack.length) {
-            const cur = stack.pop()!;
-            for (const e of this.edges) {
-                if (e.from === cur && e.type === 'contains') {
-                    out.push(e.to);
-                    stack.push(e.to);
-                }
-            }
-        }
-        return out;
+        return 'mapped';  // default role
     }
 
     /**
-     * Normalize an identifier by collapsing multiple consecutive slashes,
-     * while preserving full URLs intact.
-     *
-     * @param id
-     *   The raw identifier string (route path, widget ID, URL, etc.).
-     * @returns
-     *   A normalized identifier with no duplicate slashes (except in HTTP/HTTPS URLs).
-     */
+    * Normalize IDs by collapsing repeated slashes, preserving full HTTP(S) URLs.
+    */
     private _normalizeId(id: string): string {
-        // preserve full URLs
-        if (/https?:\/\//i.test(id))
-            return id;
+        // preserve URLs
+        if (/https?:\/\//i.test(id)) return id;
         return id.replace(/\/{2,}/g, '/');
     }
 }

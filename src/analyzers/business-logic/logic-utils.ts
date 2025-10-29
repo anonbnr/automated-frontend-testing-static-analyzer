@@ -4,19 +4,31 @@
 // Static helpers for **business-logic** analysis of Angular components.
 //
 // Responsibilities:
-//   1. EventContext construction        (buildEventContext, navEventContext,
-//                                       parseFunctionCall, fragmentNavigationContext)
-//   2. Method extraction                (extractMethods)
-//   3. Handler call extraction          (collectEventHandlerCalls,
-//                                       isRouterNavigateCall,
-//                                       resolveRouterNavigate,
-//                                       isServiceCall)
-//   4. Form validation extraction       (extractValidationRules,
-//                                       scanForGroupCalls,
-//                                       processGroupCall,
-//                                       processControlProperties,
-//                                       collectValidatorsFromArray,
-//                                       attachValidationRules)
+//   1) EventContext construction
+//      - buildEventContext: turn a widget event + handler string into EventContext
+//      - navEventContext:   create a pure navigation EventContext
+//      - parseFunctionCall: parse "fn(arg)" into {name, arg}
+//      - fragmentNavigationContext: map fn('fragment') to a known route tail
+//
+//   2) Method extraction
+//      - extractMethods: collect instance MethodDeclaration nodes by name
+//
+//   3) Handler call extraction
+//      - collectEventHandlerCalls: list significant calls inside a handler body
+//      - isRouterNavigateCall / resolveRouterNavigate: recognize Router.navigate*
+//      - isBackendServiceCaller: detect "*Service"/http/api callers
+//      - isNoiseCall: filter out Rx/logging/plumbing calls
+//
+//   4) Form validation extraction
+//      - extractValidationRules: gather validators from formBuilder.group(...)
+//      - scanForGroupCalls / processGroupCall / processControlProperties
+//      - collectValidatorsFromArray / attachValidationRules
+//
+// Notes
+//   • These utilities operate on TypeScript ASTs (ts-morph) and template-derived
+//     widget metadata; they never execute code.
+//   • Logging is intentionally verbose (trace/debug) to aid troubleshooting.
+//   • The AnalyzerConfig tunes backend detection and noise filtering.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { ArrayLiteralExpression, CallExpression, ClassDeclaration, ConstructorDeclaration, ElementAccessExpression, MethodDeclaration, ObjectLiteralExpression, PropertyAccessExpression, SyntaxKind } from "ts-morph";
@@ -27,28 +39,29 @@ import { RouteMap } from "../../models/route-info.js";
 import { WidgetInfo } from "../../models/widget-info.js";
 
 /**
- * Static utility methods for extracting UI-to-logic metadata
- * from Angular component classes.
- *
- * Contains helpers to:
- *   - build an `EventContext` from widget events and handlers
- *   - collect all class methods
- *   - walk handler bodies and resolve router navigations & service calls
- *   - extract FormBuilder validation rules
+ * Static utility methods for extracting UI→logic metadata
+ * from Angular component classes (no side effects).
  */
 export class LogicUtils {
     // ────────────────────────────────────────────────────────────────────────────
     // 1) EVENT CONTEXT CONSTRUCTION
     // ────────────────────────────────────────────────────────────────────────────
+
     /**
-     * Builds an `EventContext` for a given event–handler binding.
-     *
-     * @param event        The type of event (e.g. `'click'`, `'submit'`, `'routerLink'`, `'href'`, `'static-redirect'`).
-     * @param handlerExpr  The raw handler expression string from the template (e.g. `"onSave()"`, `"/home"`, etc.).
-     * @param methods      Map of component method names → their `MethodDeclaration` AST nodes.
-     * @param routeMap     The `RouteMap` used to resolve fragment or dynamic-route navigations.
-     * @returns            An `EventContext` if the handler can be resolved; otherwise `undefined`.
-     */
+    * Build an EventContext for a given event–handler binding.
+    *
+    * Resolution order:
+    *   1. If event is routerLink/href/static-redirect → literal nav EventContext
+    *   2. If handler looks like fn('fragment') → try fragmentNavigationContext
+    *   3. Else treat handler as a method name → collectEventHandlerCalls
+    *
+    * @param event       Normalized widget/nav event name.
+    * @param handlerExpr Raw handler expression from template (e.g., "onSave()", "/home").
+    * @param methods     Map of component method names → MethodDeclaration.
+    * @param routeMap    RouteMap for resolving fragment → route endings.
+    * @param cfg         Analyzer configuration (backend/noise heuristics).
+    * @returns           EventContext or undefined if nothing resolvable.
+    */
     static buildEventContext(
         event: UserEventType | NavEventType,
         handlerExpr: string,
@@ -56,7 +69,7 @@ export class LogicUtils {
         routeMap: RouteMap,
         cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG
     ): EventContext | undefined {
-        // 0) normalize event:
+        // Angular sometimes emits (ngSubmit); normalize to "submit"
         const normalizedEvent = (event === 'ngSubmit' ? 'submit' : event);
 
         logger.log(
@@ -67,7 +80,7 @@ export class LogicUtils {
             handlerExpr
         );
 
-        // 1) literal href / routerLink / static-redirect
+        // Case 1: pure navigation bindings (no method body to inspect)
         if (normalizedEvent === 'href' || normalizedEvent === 'routerLink' || normalizedEvent === 'static-redirect') {
             logger.debug(
                 '[LogicUtils] [%s] treating "%s" as literal navigation',
@@ -77,7 +90,7 @@ export class LogicUtils {
             return this.navEventContext(normalizedEvent, handlerExpr);
         }
 
-        // 2) explicit fnName('someFragment') patterns
+        // Case 2: Try parsing "fn(arg)" and mapping known fragments to routes
         const fnCall = this.parseFunctionCall(handlerExpr);
         if (fnCall) {
             logger.log('trace', '[LogicUtils] parseFunctionCall → %o', fnCall);
@@ -91,7 +104,7 @@ export class LogicUtils {
             }
         }
 
-        // 3) otherwise, assume handlerExpr is a real method name
+        // Case 3: Interpret as a method name, strip trailing parentheses if present
         const methodName = handlerExpr.replace(/\(.*\)$/, '').trim();
         const methodDecl = methods.get(methodName);
         if (methodDecl) {
@@ -118,26 +131,24 @@ export class LogicUtils {
     }
 
     /**
-     * Parses a handler expression of the form `fn(arg)` or `fn('literal')` into its name + argument.
-     *
-     * @param expr   The raw handler expression (e.g. `"navigate('/dashboard')"`, `"showModal(id)"`).
-     * @returns      An object `{ name, arg }` if it matches, or `undefined` otherwise.
-     */
+    * Parse "fn(arg)" or "fn('literal')" into { name, arg }.
+    *
+    * @param expr Raw expression string from template.
+    * @returns    Parsed pieces or undefined if not a simple call form.
+    */
     static parseFunctionCall(expr: string): { name: string; arg: string } | undefined {
-        // Handles both fn('foo') and fn(bar) 
         logger.log('trace', '[LogicUtils] parseFunctionCall("%s")', expr);
+        // Accepts alnum/underscore/dollar identifiers; argument may be quoted or bare
         const m = expr.match(/^([A-Za-z_$][\w$]*)\(\s*(?:['"]?([^'")]+)['"]?)\s*\)$/);
         return m ? { name: m[1], arg: m[2] } : undefined;
     }
 
     /**
-     * Constructs an `EventContext` for a pure navigation binding
-     * (`routerLink`, `href`, or a static-redirect).
-     *
-     * @param event   The navigation event type.
-     * @param target  The target route or URL string.
-     * @returns       An `EventContext` with a single callContext for that navigation.
-     */
+    * Create a pure navigation EventContext (routerLink/href/static-redirect).
+    *
+    * @param event  Navigation event type.
+    * @param target Destination URL/route literal.
+    */
     static navEventContext(
         event: NavEventType,
         target: string
@@ -160,15 +171,15 @@ export class LogicUtils {
     }
 
     /**
-     * If the call `fnName(fragment)` corresponds to a route ending in `/${fragment}`,
-     * returns an `EventContext` for that navigation.
-     *
-     * @param event     The originating UI event (e.g. `'click'`).
-     * @param fnName    The function name being called (e.g. `'goToSection'`).
-     * @param fragment  The fragment argument (e.g. `'details'`).
-     * @param routeMap  The `RouteMap` in which to look up matching routes.
-     * @returns         An `EventContext` if a matching route is found; otherwise `undefined`.
-     */
+    * If "fnName(fragment)" corresponds to a route ending with "/fragment",
+    * build a navigation-like EventContext anchored on that route.
+    *
+    * @param event     Original UI event.
+    * @param fnName    Name of the invoked function.
+    * @param fragment  Route tail to resolve.
+    * @param routeMap  Source of known routes.
+    * @returns         EventContext when a route ending matches; else undefined.
+    */
     static fragmentNavigationContext(
         event: UserEventType,
         fnName: string,
@@ -183,7 +194,8 @@ export class LogicUtils {
             fnName,
             fragment
         );
-        // find any route that endsWith `/fragment`
+
+        // Heuristic: choose the first route that ends with "/<fragment>"
         const route = routeMap.routes.find(r => r.route.endsWith(`/${fragment}`))?.route;
         if (!route) {
             logger.log('trace', '[LogicUtils] No matching route for fragment="%s"', fragment);
@@ -197,7 +209,7 @@ export class LogicUtils {
 
         return {
             event,
-            handler: '', // inlined
+            handler: '', // inline navigation (no dedicated method)
             callContexts: [{
                 caller: fnName,
                 called: route,
@@ -211,13 +223,11 @@ export class LogicUtils {
     // ────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Gathers every **instance** method declared on the primary component class.
-     *
-     * @param compClass
-     *   The `ClassDeclaration` node for an Angular component.
-     * @returns
-     *   A Map where each key is a method name and each value is its `MethodDeclaration` AST node.
-     */
+    * Collect all instance methods declared directly on the component class.
+    *
+    * @param compClass Component ClassDeclaration.
+    * @returns         Map: methodName → MethodDeclaration.
+    */
     static extractMethods(compClass: ClassDeclaration): Map<string, MethodDeclaration> {
         logger.log('trace', '[LogicUtils] extractMethods()');
         const methods = new Map<string, MethodDeclaration>();
@@ -239,20 +249,20 @@ export class LogicUtils {
     // ────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Walks through a handler’s body, locates every `CallExpression`, and—
-     * depending on the call—resolves it as:
-     *   1. a router navigation (caller=`this.router`, called=`navigate`, data=`[...segments]`)
-     *   2. a backend service call (caller=`this.userService`, called=`saveUser`, data=`['/backend']`)
-     *   3. anything else (caller=object or fn name, called=methodName, data=`[]`)
-     *
-     * @param handler
-     *   The `MethodDeclaration` AST node for the component’s handler.
-     * @param routeMap
-     *   The `RouteMap` for matching and resolving `router.navigate([...])`.
-     * @returns
-     *   A deduped array of `EventHandlerCallContext`, each matching:
-     *     { caller: string; called: string; data: string[] }
-     */
+    * Walk a handler body and extract significant CallExpressions as
+    * EventHandlerCallContext items.
+    *
+    * Classification:
+    *   • Router calls → resolve segments
+    *   • Backend calls (Service/http/api) → tag with '/backend' payload
+    *   • Others → retain as caller.method with empty data[]
+    *
+    * Dedupe key = "<caller>.<method>|<data-joined>".
+    *
+    * @param handler MethodDeclaration to analyze.
+    * @param cfg     Analyzer configuration (backend/noise rules).
+    * @returns       Deduped list of call contexts (order not guaranteed).
+    */
     static collectEventHandlerCalls(
         handler: MethodDeclaration,
         cfg: AnalyzerConfig = DEFAULT_ANALYZER_CONFIG
@@ -278,19 +288,19 @@ export class LogicUtils {
 
             if (expr.isKind(SyntaxKind.PropertyAccessExpression)) {
                 const pae = expr as PropertyAccessExpression;
-                caller = pae.getExpression().getText(); // e.g. "this.router" or "this.userService"
-                methodName = pae.getName(); // e.g. "navigate" or "saveUser"
+                caller = pae.getExpression().getText(); // e.g. "this.router"
+                methodName = pae.getName(); // e.g. "navigate"
             }
             else if (expr.isKind(SyntaxKind.ElementAccessExpression)) {
                 const eae = expr as ElementAccessExpression;
                 caller = eae.getExpression().getText();
                 const arg = eae.getArgumentExpression()?.getText() ?? '';
-                methodName = arg.replace(/['"`]/g, '');     // e.g. "_destroyOverlay"
-                if (methodName.startsWith('_')) continue;   // private → drop
+                methodName = arg.replace(/['"`]/g, '');     // bracket access → method name string
+                if (methodName.startsWith('_')) continue;   // private-like → ignore
             }
 
             else {
-                // fallback: identifier or something else
+                // Fallback: simple identifier call
                 caller = expr.getText(); // e.g. "someGlobalFn"
                 methodName = expr.getText();
             }
@@ -299,28 +309,28 @@ export class LogicUtils {
             let data: string[] = [];
             let isBackend = false;
 
-            // 2) Special-case router navigation
+            // 2) Router navigation
             const isNav = this.isRouterNavigateCall(expr.getText());
             if (isNav) {
                 const { segments } = this.resolveRouterNavigate(callExpr);
                 data = segments;
             }
 
-            // 3) Service/Http calls → mark as backend
+            // 3) Backend/service/http/api
             else if (this.isBackendServiceCaller(caller, cfg)) {
                 isBackend = true;
                 // canonical backend sentinel + helpful labels
-                const raw = caller.replace(/^this\./, '').split('.')[0]; // e.g. "userService"
+                const raw = caller.replace(/^this\./, '').split('.')[0]; // root service token (e.g. "userService")
                 const service = cfg.backend.normalizeServiceName(raw);
                 data = ['/backend', service, methodName];
 
                 logger.debug('[LogicUtils] backend call detected → %s.%s', caller, methodName);
             }
 
-            // 4) Filter noisy non-domain related calls
-            if (this.isNoiseCall(caller, methodName, isBackend, isNav, cfg)) continue; // drop Rx/logging/etc.
+            // 4) Filter noise (Rx/logging/etc.) unless navigation/backend
+            if (this.isNoiseCall(caller, methodName, isBackend, isNav, cfg)) continue;
 
-            // 5) Build the unique key & dedupe
+            // 5) Dedupe by composite key
             const key = `${caller}.${methodName}|${data.join(",")}`;
             if (!uniqueCalls.has(key)) {
                 uniqueCalls.set(key, { caller, called, data });
@@ -341,11 +351,10 @@ export class LogicUtils {
     }
 
     /**
-     * Determines whether the given text corresponds to a `<identifier>.navigate(...)` call.
-     *
-     * @param callerText  The expression text of the call (e.g. `"this.router.navigate"`).
-     * @returns           `true` if it looks like a navigation call; otherwise `false`.
-     */
+    * Detect "<something>.navigate(...)" or ".navigateByUrl(...)" patterns.
+    *
+    * @param callerText Expression text for the call target.
+    */
     static isRouterNavigateCall(callerText: string): boolean {
         logger.log(
             'trace',
@@ -356,15 +365,15 @@ export class LogicUtils {
     }
 
     /**
-     * Given a CallExpression for `<identifier>.navigate([...])`, returns
-     * the _stripped_ segments passed to it.
-     *
-     * @param callExpr
-     *   The CallExpression for `<identifier>.navigate( arrayLiteral )`.
-     * @returns
-     *   `{ segments: string[] }` where each element is the raw segment
-     *   (no quotes, no leading “/”).
-     */
+    * Extract path segments from navigate[..] / navigateByUrl('...') calls.
+    *
+    * Supports:
+    *   • navigate([ 'a', 'b', id ])          → ['a','b',id]
+    *   • navigateByUrl('/a/b')               → ['a','b']
+    *   • navigate(createUrlTree([ ... ]))    → [... segments ...]
+    *
+    * @param callExpr The CallExpression for the router call.
+    */
     static resolveRouterNavigate(callExpr: CallExpression): { segments: string[] } {
         logger.log('trace', '[LogicUtils] resolveRouterNavigate()');
         const args = callExpr.getArguments();
@@ -373,7 +382,7 @@ export class LogicUtils {
 
         const first = args[0];
 
-        // Case A: navigateByUrl(createUrlTree([...]))
+        // Case A: navigateByUrl(createUrlTree([ ... ]))
         if (first.isKind(SyntaxKind.CallExpression) &&
             /createUrlTree/.test(first.getExpression().getText())) {
             const arg0 = first.getArguments()[0];
@@ -387,7 +396,7 @@ export class LogicUtils {
             }
         }
 
-        // Case B: navigate([...])
+        // Case B: navigate([ 'a', 'b' ])
         if (first.isKind(SyntaxKind.ArrayLiteralExpression)) {
             const arrayLit = first as ArrayLiteralExpression;
             const segments = arrayLit
@@ -398,7 +407,7 @@ export class LogicUtils {
             return { segments };
         }
 
-        // Case C: navigateByUrl('/a/b') OR navigate('/a/b') as string
+        // Case C: navigateByUrl('/a/b') or navigate('/a/b')
         const asText = first.getText().replace(/[`'"]/g, "").replace(/^\/+/, "");
         const segments = asText.split('/').filter(Boolean);
         logger.debug('[LogicUtils] resolveRouterNavigate (string) → %o', segments);
@@ -406,29 +415,37 @@ export class LogicUtils {
     }
 
     /**
-     * Heuristic to decide whether a call is to a backend service
-     * (e.g. `this.userService.save()`).
-     *
-     * @param callerText  The expression text of the call (e.g. `"this.userService.saveUser"`).
-     * @returns           `true` if it appears to call a `*Service` method; otherwise `false`.
-     */
+    * Heuristic to detect backend/service callers (e.g., this.userService / this.http).
+    *
+    * @param callerText Full caller expression text.
+    * @param cfg        Analyzer config with regex rules.
+    */
     static isBackendServiceCaller(callerText: string, cfg: AnalyzerConfig): boolean {
-        // Must be a root like "this.userService" or "this.http" – not a CallExpression result
-        if (/\(/.test(callerText)) return false; // exclude call-results: "...addPost(...)"
+        // Exclude call results like "factory().service"
+        if (/\(/.test(callerText)) return false;
         return cfg.backend.serviceCallerRe.test(callerText);
     }
 
+    /**
+    * Decide if a call should be filtered from the event context as "noise".
+    *
+    * Noise includes:
+    *   • Known plumbing method names (cfg.noise.methodNames)
+    *   • Free RxJS creators (cfg.noise.freeFunctions) when unqualified
+    *   • console.log
+    * Navigation/backend calls are preserved even if names appear in noise sets.
+    */
     static isNoiseCall(caller: string, methodName: string, isBackend: boolean, isNav: boolean, cfg: AnalyzerConfig): boolean {
-        // 1) Noise method-names take precedence
+        // 1) Hard noise list of method names (e.g., pipe/subscribe/then/...)
         if (cfg.noise.methodNames.has(methodName)) return true;
 
-        // 2) Otherwise keep nav/backend
+        // 2) Always keep navigation/backend calls
         if (isBackend || isNav) return false;
 
-        // 3) Logging
+        // 3) Console logging
         if (/^console$/.test(caller) && methodName === 'log') return true;
 
-        // 4) Noisy functions
+        // 4) Free functions (e.g., of/from/timer) when unqualified
         if (!caller.includes('.') && cfg.noise.freeFunctions.has(methodName)) return true;
         return false;
     }
@@ -438,12 +455,16 @@ export class LogicUtils {
     // ────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Scans a component class for every `formBuilder.group(...)` invocation
-     * and populates a map of controlName → validator list.
-     *
-     * @param compClass  The `ClassDeclaration` of the component.
-     * @returns          A `Map` where each key is a form control name and the value is an array of validator expressions.
-     */
+    * Extract validators from all occurrences of formBuilder.group({...}).
+    *
+    * Search scope:
+    *   • class property initializers
+    *   • constructor body
+    *   • all method bodies
+    *
+    * @param compClass Component class to scan.
+    * @returns         Map: controlName → validators[] (raw expression text).
+    */
     static extractValidationRules(compClass: ClassDeclaration): Map<string, string[]> {
         logger.log('trace', '[LogicUtils] extractValidationRules()');
         const validationMap = new Map<string, string[]>();
@@ -464,20 +485,21 @@ export class LogicUtils {
     }
 
     /**
-     * Finds all calls to `formBuilder.group(...)` within:
-     *  - class-property initializers,
-     *  - the constructor body,
-     *  - any method bodies.
-     *
-     * @param compClass  The component’s `ClassDeclaration`.
-     * @param cb         Callback invoked for each `CallExpression` found.
-     */
+    * Find all formBuilder.group(...) calls within:
+    *   • class property initializers
+    *   • constructor
+    *   • methods
+    *
+    * @param compClass Component class declaration.
+    * @param cb        Callback for each CallExpression found.
+    */
     static scanForGroupCalls(
         compClass: ClassDeclaration,
         cb: (callExpr: CallExpression) => void
     ) {
         logger.log('trace', '[LogicUtils] scanForGroupCalls()');
-        // a) class properties
+
+        // a) Property initializers (e.g., profileForm = formBuilder.group({...}))
         for (const p of compClass.getProperties()) {
             const init = p.getInitializer();
             if (
@@ -489,7 +511,7 @@ export class LogicUtils {
             }
         }
 
-        // b) constructor body
+        // b) Constructor body
         const ctor = compClass.getConstructors()[0] as ConstructorDeclaration | undefined;
         if (ctor) {
             for (const stmt of ctor.getStatements()) {
@@ -506,7 +528,7 @@ export class LogicUtils {
             }
         }
 
-        // c) methods
+        // c) Methods
         for (const m of compClass.getMethods()) {
             const call = m
                 .getDescendantsOfKind(SyntaxKind.CallExpression)
@@ -519,19 +541,18 @@ export class LogicUtils {
     }
 
     /**
-     * Processes a single `formBuilder.group({...})` call, extracting the
-     * controls object and delegating to `processControlProperties`.
-     *
-     * @param callExpr       The `CallExpression` for `.group({ ... })`.
-     * @param validationMap  Map to populate: controlName → validators[].
-     * @modifies validationMap
-     */
+    * Process a single ".group({ ... })" call, delegating to control extraction.
+    *
+    * @param callExpr      CallExpression for formBuilder.group(...).
+    * @param validationMap Map to populate: controlName → validators[].
+    */
     static processGroupCall(
         callExpr: CallExpression,
         validationMap: Map<string, string[]>
     ): void {
         logger.log('trace', '[LogicUtils] processGroupCall()');
-        // The first argument to formBuilder.group(…) should be an object literal
+
+        // Expect first arg to be an object literal of controls
         const controlsObj = callExpr.getArguments()[0]?.asKind(SyntaxKind.ObjectLiteralExpression);
         if (!controlsObj) {
             logger.warn('[LogicUtils] processGroupCall – no object literal found');
@@ -542,12 +563,15 @@ export class LogicUtils {
     }
 
     /**
-     * Extracts validator lists from a formBuilder.group({...}) call.
-     *
-     * @param controlsObj    The `{ … }` passed to `group()`.
-     * @param validationMap  Populated: controlName → validators[].
-     * @modifies validationMap
-     */
+    * For each "control: [initial, validators]" entry, extract validator text.
+    *
+    * Supported forms:
+    *   • control: [ value, [ Validators.required, Validators.min(0) ] ]
+    *   • control: [ value, Validators.required ]
+    *
+    * @param controlsObj   Object literal inside group({...}).
+    * @param validationMap Output map to fill.
+    */
     static processControlProperties(
         controlsObj: ObjectLiteralExpression,
         validationMap: Map<string, string[]>
@@ -563,16 +587,18 @@ export class LogicUtils {
 
             const name = prop.getName().replace(/['"]/g, '');
             const initializer = prop.getInitializer();
+
+            // Only care for array initializer forms: [ value, validators ]
             if (initializer && initializer.isKind(SyntaxKind.ArrayLiteralExpression)) {
                 const elements = initializer.getElements();
                 const validatorsNode = elements.length > 1 ? elements[1] : undefined;
                 let rules: string[] = [];
 
-                // Case A: An array literal of validators, e.g. [Validators.required, Validators.min(0)]
+                // A) validators as an array literal
                 if (validatorsNode && validatorsNode.isKind(SyntaxKind.ArrayLiteralExpression))
                     rules = this.collectValidatorsFromArray(validatorsNode);
 
-                // Case B: A single validator expression, e.g. Validators.required
+                // B) single validator expression (e.g., Validators.required)
                 else if (validatorsNode && validatorsNode.getText().includes('Validators'))
                     rules.push(validatorsNode.getText());
 
@@ -587,12 +613,11 @@ export class LogicUtils {
     }
 
     /**
-     * Given an `ArrayLiteralExpression` of validator expressions,
-     * returns the subset whose `.getText()` includes `"Validators"`.
-     *
-     * @param arrayLit  The `ArrayLiteralExpression` node containing validator entries.
-     * @returns         An array of validator snippets (e.g. `["Validators.required", "Validators.min(0)"]`).
-     */
+    * Collect validator snippets from an ArrayLiteralExpression.
+    *
+    * @param arrayLit Array literal node containing validator expressions.
+    * @returns        Strings like "Validators.required", "Validators.min(0)".
+    */
     static collectValidatorsFromArray(arrayLit: ArrayLiteralExpression): string[] {
         logger.log('trace', '[LogicUtils] collectValidatorsFromArray()');
         const rules: string[] = [];
@@ -607,15 +632,15 @@ export class LogicUtils {
     }
 
     /**
-     * Attaches form‐control validation rules onto a widget.
-     *
-     * First tries `widget.attributes.formControlName`, then
-     * falls back to matching segments of the `widget.id`.
-     *
-     * @param widget          The WidgetInfo to decorate.
-     * @param validationMap   ControlName → validators[] map.
-     * @modifies widget.validationRules
-     */
+    * Attach discovered validation rules to a WidgetInfo.
+    *
+    * Priority:
+    *   1) Match by widget.attributes.formControlName
+    *   2) Fallback: heuristic match using parts of widget.id
+    *
+    * @param widget        Target widget to decorate in-place.
+    * @param validationMap ControlName → validators[].
+    */
     static attachValidationRules(
         widget: WidgetInfo,
         validationMap: Map<string, string[]>
@@ -625,6 +650,8 @@ export class LogicUtils {
             '[LogicUtils] attachValidationRules(widget=%s)',
             widget.id
         );
+
+        // Direct match via formControlName attribute
         const ctrl = widget.attributes?.formControlName;
         if (ctrl && validationMap.has(ctrl)) {
             widget.validationRules = validationMap.get(ctrl);
@@ -636,6 +663,7 @@ export class LogicUtils {
             return;
         }
 
+        // Heuristic fallback: search control name fragments in namespaced ID
         const parts = widget.id.toLowerCase().split("__");
         for (const [key, rules] of validationMap.entries()) {
             const lk = key.toLowerCase();

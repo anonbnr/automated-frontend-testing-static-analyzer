@@ -1,14 +1,20 @@
+// ──────────────────────────────────────────────────────────────────────────────
 // builders/user-journeys/user-journey-assembler.ts
-/**
- * UserJourneyAssembler
- * -----------------
- * Declarative, reusable builder that:
- *  - stages module/route/component,
- *  - walks a widget path, interleaving per-widget metadata and *optional* non-terminal effects,
- *  - recognizes submit-button → form chains,
- *  - emits one user journey per terminal edge (route/external/backend/virtual).
- *  - avoids duplicate interaction/terminal pairs.
- */
+//
+//  user-journey-assembler
+//  ----------------------
+//  Declarative, reusable builder that:
+//   - Stages module/route/component prefix steps.
+//   - Walks a widget path, emitting per-widget steps with authoring metadata.
+//   - Detects submit-button → form chains and records a single "submit" interaction.
+//   - Emits one user journey per terminal edge (route | external-route | backend | virtual-route).
+//   - Avoids duplicate interaction steps with identical (nodeId, via, meta-signature).
+//  
+//  Notes:
+//   - This assembler is purely mechanical: it does not group or label intents
+//     (that happens in processors/labels).
+//   - Deterministic output: terminal edges are sorted, and journey IDs are stable.
+// ──────────────────────────────────────────────────────────────────────────────
 
 import logger from "../../logging/logger.js";
 import { UserJourney, UserJourneyStep, UserJourneyStepType } from "../../models/user-journeys/user-journey-info.js";
@@ -17,16 +23,19 @@ import { GraphLookups } from "./graph-helpers.js";
 /**
  * AssembleContext
  * ---------------
- * - prefixSteps: absolute steps placed before any widget steps (e.g., [module, route, component]).
+ * Parameters for building user journeys from a single widget path scope.
+ *
+ * - prefixSteps: absolute steps placed before any widget steps
+ *   (e.g., [module, route, component] for route-scoped; or [module, app-root, component] for global).
  * - widgetPath: ordered list of widget ids (leaf last).
  * - rootModuleId: used to derive stable user journey ids.
  */
 export interface AssembleContext {
-    // absolute prefix steps (e.g., module/route or module/app-root/component)
+    /** Absolute prefix steps (e.g., module/route or module/app-root/component). */
     prefixSteps: UserJourneyStep[];
-    // widget path to traverse (IDs in order)
+    /** Widget path to traverse (IDs in order; last element is the leaf). */
     widgetPath: string[];
-    // moduleId for user journey root
+    /** The module ID serving as the root scope for the journey ID. */
     rootModuleId: string;
 }
 
@@ -34,23 +43,41 @@ export class UserJourneyAssembler {
     constructor(private g: GraphLookups) { }
 
     /**
-    * Build 1..N user journeys from one widget path:
-    * 1) Stage prefix + widget steps with metadata.
-    * 2) For each widget (non-leaf, non-form), optionally attach ONE inline *virtual* effect.
-    *    (Skip backends here and skip all effects on leaf/form to avoid duplicates.)
-    * 3) If we detect a submit-trigger → form chain, terminals originate from the form; otherwise from the leaf.
-    * 4) For each terminal edge, add a final interaction (unless already *submit* via a trigger) + terminal step.
-    * 5) Construct a stable id: <rootModuleId> → <path[via]> → <dest>.
+    * Build 1..N user journeys from one widget path.
+    *
+    * Algorithm
+    * 1) Stage prefix + widget steps with authoring metadata.
+    * 2) For each widget, detect a single trigger→form "submit" chain:
+    *    - If a widget has a transition(type="submit") to a widget (the form),
+    *      record one interaction { via:"submit" } on the trigger only.
+    * 3) Determine terminal origin:
+    *    - If submit-form detected → terminals originate from the form widget.
+    *    - Else → terminals originate from the leaf widget.
+    * 4) For each terminal edge originating from (3):
+    *    - Add a final interaction unless we've already recorded a submit on the trigger.
+    *    - Add the terminal step (backend/route/virtual/external-route).
+    * 5) Synthesize a stable journey id: <root> → <scope> → <path[via]> → <dest>
+    *
+    * @param ctx Assemble context
+    * @returns A list of UserJourney objects (one per terminal outcome)
     */
     assemble(ctx: AssembleContext): UserJourney[] {
         const staged = [...ctx.prefixSteps];
         let submitFormId: string | undefined;
 
-        // 1) Walk widgets, attach metadata; 2) add at most one inline *virtual* effect on non-leaf, non-form widgets.
+        logger.log(
+            "trace",
+            "[UserJourneyAssembler] start: root=%s path=%o scope=%o",
+            ctx.rootModuleId,
+            ctx.widgetPath,
+            ctx.prefixSteps.map((s) => `${s.stepType}:${s.nodeId}`)
+        );
+
+        // 1) Walk widgets; capture authoring metadata; detect trigger→form submit.
         for (const wid of ctx.widgetPath) {
             const wNode = this.g.nodeMap.get(wid)!;
 
-            // Stage the widget itself with authoring metadata.
+            // Emit the widget step with authoring metadata for UIs.
             staged.push(this._step("widget", wid, {
                 metadata: {
                     attributes: wNode.attributes,
@@ -60,7 +87,7 @@ export class UserJourneyAssembler {
             }));
 
 
-            // Detect trigger → form (record *submit* once, on the trigger).
+            // Detect trigger→form submit edge (record the "submit" on the trigger only).
             const transitions = this.g.transitionsFrom(wid);
             const submitEdge = transitions.find((t) => t.type === "submit");
             if (submitEdge) {
@@ -71,23 +98,41 @@ export class UserJourneyAssembler {
                     staged.push(this._step("interaction", wid, { via: "submit" }));
                     submitFormId = submitEdge.to;
                 }
+                else {
+                    // Defensive: a submit to non-widget shouldn't happen, but if it does, don't crash.
+                    logger.warn(
+                        "[UserJourneyAssembler] submit edge to non-widget ignored: from=%s to=%s type=%s",
+                        wid,
+                        submitEdge.to,
+                        toNode?.type
+                    );
+                }
             }
         }
 
-        // 3) Terminals originate from the leaf or the form (if a trigger submitted to a form).
+        // 2) Decide where to look for terminal outcomes.
         const leaf = ctx.widgetPath[ctx.widgetPath.length - 1];
         const terminalOrigin = submitFormId ?? leaf;
+
+        // 3) Gather terminal edges (deterministically ordered).
         const terminalEdges = this.g
             .transitionsFrom(terminalOrigin)
             .filter((t) => this.g.isTerminal(this.g.nodeMap.get(t.to)))
             .sort(this.g.byDeterministicEdge);
 
-        // 4) One user journey per terminal edge; add a final interaction unless already covered by trigger submit.
+        logger.log(
+            "trace",
+            "[UserJourneyAssembler] terminal origin=%s edges=%o",
+            terminalOrigin,
+            terminalEdges.map((t) => `${t.type}:${t.to}`)
+        );
+
+        // 4) Emit one journey per terminal edge.
         const journeys: UserJourney[] = [];
         for (const t of terminalEdges) {
             const steps = [...staged];
 
-            // Avoid a second "submit" interaction when we already recorded it on the trigger.
+            // If we didn't already record a submit on the trigger, add the final interaction now.
             if (!submitFormId) {
                 this._pushIfNotDuplicate(steps, this._step("interaction", terminalOrigin, {
                     via: this.g.viaFromTransition(t),
@@ -95,13 +140,13 @@ export class UserJourneyAssembler {
                 }));
             }
 
-            // Always add the terminal step (backend/route/virtual/external-route).
+            // Always add the terminal step itself.
             const dest = this.g.nodeMap.get(t.to)!;
             steps.push(
                 this._step(this.g.asUserJourneyTerminal(dest.type), t.to, { metadata: t.metadata })
             );
 
-            // Stable id: <root> → <path[via]> → <dest>
+            // Stable ID: <root> → <path[via]> → <dest>
             const pathId = ctx.widgetPath.join("/");
             const viaTag = submitFormId ? "submit" : this.g.viaFromTransition(t);
             const scopeParts = ctx.prefixSteps
@@ -124,7 +169,10 @@ export class UserJourneyAssembler {
         return journeys;
     }
 
-    /** Avoid pushing the same interaction twice in a row (same nodeId + via + shallow metadata signature). */
+    /**
+    * Push an interaction step only if it is not a duplicate of the previous interaction.
+    * Duplicates are detected via (nodeId, via, shallow metadata signature).
+    */
     private _pushIfNotDuplicate(steps: UserJourneyStep[], next: UserJourneyStep) {
         const last = steps[steps.length - 1];
         if (!last || last.stepType !== "interaction" || next.stepType !== "interaction") {
@@ -135,7 +183,7 @@ export class UserJourneyAssembler {
         const sameNode = last.nodeId === next.nodeId;
         const sameVia = (last as any).via === (next as any).via;
 
-        // Compare a compact signature of metadata we care about (service/method/handler/sourceEvent)
+        // Compare a compact signature of the metadata we care about.
         const sig = (m: any) =>
             JSON.stringify({
                 service: m?.service,
@@ -146,7 +194,16 @@ export class UserJourneyAssembler {
 
         const sameMeta = sig(last.metadata) === sig(next.metadata);
 
-        if (!(sameNode && sameVia && sameMeta)) steps.push(next);
+        if (sameNode && sameVia && sameMeta) {
+            logger.log(
+                "trace",
+                "[UserJourneyAssembler] skipping duplicate interaction: %o",
+                next
+            );
+            return;
+        }
+
+        steps.push(next);
     }
 
     /** Small helper to produce a UserJourneyStep with optional metadata. */

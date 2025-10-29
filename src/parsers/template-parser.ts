@@ -1,13 +1,21 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // parsers/template-parser.ts
 //
-// Defines a framework-agnostic template parser interface and
-// provides an Angular-specific implementation.
-//   - TemplateParser         : abstract contract for converting a template
-//                              string into AST nodes.
-//   - AngularTemplateParser  : uses Angular Compiler’s `parseTemplate`
-//                              to produce `TmplAstNode[]`.
-//   - Extensible for future frameworks (React, Vue, etc.).
+// Purpose
+//   Provide a unified abstraction for parsing UI component templates into
+//   analyzable AST nodes, with a concrete Angular implementation.
+//
+// Design
+//   - TemplateParser          : abstract interface / contract
+//   - AngularTemplateParser   : Angular-specific implementation using
+//                               @angular/compiler's `parseTemplate()`
+//
+// Notes
+//   • Returns Angular's `TmplAstNode[]` structure used throughout analyzers.
+//   • Can be extended for other frameworks (React, Vue, Svelte, etc.)
+//     by subclassing TemplateParser and overriding `parse()`.
+//   • Uses `"inline"` source id for Angular parsing so diagnostics remain
+//     meaningful even for inline templates.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { parseTemplate, TmplAstNode } from "@angular/compiler";
@@ -16,35 +24,38 @@ import { parseTemplate, TmplAstNode } from "@angular/compiler";
  * Abstract interface for parsing UI component templates into AST nodes.
  *
  * Implementations must take a raw template string (HTML/markup)
- * and return a promise resolving to an array of framework-specific
- * AST nodes for downstream analysis.
+ * and return a Promise resolving to an array of framework-specific
+ * AST nodes suitable for downstream analysis.
  */
 export abstract class TemplateParser {
     /**
-     * Parse the given template source into its AST representation.
-     *
-     * @param template - Raw template text (e.g. HTML, Angular markup).
-     * @returns A promise resolving to an array of AST nodes.
-     */
+    * Parse the given template source into its AST representation.
+    *
+    * @param template Raw template text (e.g., HTML or Angular markup).
+    * @returns Promise resolving to an array of parsed AST nodes.
+    */
     abstract parse(template: string): Promise<TmplAstNode[]>;
 }
 
 /**
- * Angular implementation of `TemplateParser`.
+ * Angular-specific implementation of {@link TemplateParser}.
  *
- * Internally invokes `@angular/compiler`’s `parseTemplate`
- * with source `'inline'` to produce a `TmplAstNode[]` AST.
+ * Internally delegates to `@angular/compiler`'s `parseTemplate()` to produce
+ * Angular's canonical `TmplAstNode[]` representation.
  */
 export class AngularTemplateParser extends TemplateParser {
     /**
-     * Parses an Angular template string into its AST nodes.
-     *
-     * @param template - The Angular template (inline or file-loaded).
-     * @returns Promise resolving to `TmplAstNode[]` for that template.
-     */
+    * Parse an Angular template string into its AST nodes.
+    *
+    * @param template Angular template source (inline or file-loaded).
+    * @returns Promise resolving to Angular compiler `TmplAstNode[]` nodes.
+    */
     async parse(template: string): Promise<TmplAstNode[]> {
-        // Use 'inline' so any compiler errors map back to a snippet
+        // Use 'inline' as source name so compiler errors can map to inline snippets.
         const result = parseTemplate(template, 'inline');
+
+        // Angular's parseTemplate returns { nodes, errors, styleUrls, etc. }.
+        // Only the AST `nodes` array is relevant for static analysis.
         return result.nodes;
     }
 }

@@ -1,21 +1,20 @@
+// ──────────────────────────────────────────────────────────────────────────────
 // builders/user-journeys/user-journey-registry-builder.ts
-/**
- * 
- * UserJourneyRegistryBuilder
- * =======================
- * Builds **raw** user journeys (S = sequence of steps) from the navigation multigraph.
- *
- * Key properties of the output:
- * - **Staged interactions**: every widget along a path may contribute an `interaction`
- *   (e.g., input/change/click) and, if applicable, a non-terminal effect step
- *   (`virtual-route` or `backend`) before the final terminal step.
- * - **Submit chains**: if a submit-trigger widget has a `submit` → (form widget) transition,
- *   terminal outcomes are collected from the **form widget** (not the button).
- * - **Terminal kinds**: terminal outcomes can be one of
- *   `route | external-route | backend | virtual-route`.
- *   We emit **one user journey per terminal outcome**, so the pre-processor can group siblings.
- * - **Intent**: assigned with `deriveUserJourneyIntent`, so non-route terminals are labelled well.
- */
+//
+//  user-journey-registry-builder
+//  -----------------------------
+//  Builds **raw** user journeys (sequences of steps) from the navigation multigraph,
+//  then applies pre/post processing and intent derivation.
+//  
+//  Output characteristics:
+//  - Staged interactions: every widget along a path may contribute an `interaction`
+//    and, if applicable, a non-terminal effect before the terminal step.
+//  - Submit chains: if a submit-trigger widget has a `submit` → (form widget) transition,
+//    terminal outcomes originate from the **form widget** (not the button).
+//  - Terminal kinds: one of { route | external-route | backend | virtual-route }.
+//    We emit **one user journey per terminal outcome**; fanout grouping happens in pre-processing.
+//  - Intent: labeled with `deriveUserJourneyIntent`, so non-route terminals are bucketed well.
+// ──────────────────────────────────────────────────────────────────────────────
 
 import logger from "../../logging/logger.js";
 import { AppNavigation, GraphTransition } from "../../models/navigation-graph.js";
@@ -34,9 +33,9 @@ export class UserJourneyRegistryBuilder {
     private asm!: UserJourneyAssembler;
 
     /**
-    * @param compRouteMap  Raw routes + roles used by the intent resolver.
-    * @param nav           Full navigation multigraph (nodes/edges/transitions).
-    * @param fanoutMode    Pre-processor fanout behavior ("primary" | "collapse").
+    * @param compRouteMap Raw routes + roles used by the intent resolver.
+    * @param nav          Full navigation multigraph (nodes/edges/transitions).
+    * @param fanoutMode   Pre-processor fanout behavior ("primary" | "collapse").
     */
     constructor(
         private compRouteMap: ComponentRouteMap,
@@ -53,7 +52,7 @@ export class UserJourneyRegistryBuilder {
     * 2) Collect raw user journeys from:
     *    - module→route→component→widgets (route-scoped)
     *    - app-root→component→widgets (global)
-    *    - route→(route|external) (route→route/href/redirect)
+    *    - route→(route|external) (routerLink|href|static-redirect)
     * 3) Pre-process (fanout grouping).
     * 4) Post-process (success).
     * 5) Intent derivation (route label or non-route label).
@@ -68,7 +67,7 @@ export class UserJourneyRegistryBuilder {
             this.nav.nodes.length, this.nav.edges.length, this.nav.transitions.length
         );
 
-        // 2) raw user journeys
+        // 2) Collect raw user journeys
         const routeScoped = this._collectRouteScoped();
         const globalHeader = this._collectGlobal();
         const routeToRoute = this._collectRouteToRoute();
@@ -79,23 +78,30 @@ export class UserJourneyRegistryBuilder {
             routeScoped.length, globalHeader.length, routeToRoute.length, raw.length
         );
 
-        // 3) pre-process
+        // 3) Pre-process (grouping/fanout)
         const finalList = new UserJourneyPreProcessor().process(raw, this.fanoutMode);
         logger.info(
             "[UserJourneyRegistryBuilder] After pre-process (fanout=%s): journeys=%d",
             this.fanoutMode, finalList.length
         );
 
-        // 🔎 Validate user journeys vs graph
+        // Advisory validation against graph (non-throwing)
         validateUserJourneyArtifacts(this.nav, finalList);
 
+        // 4/5) Post-process + intent; then register
         const registry = new UserJourneyRegistry();
         for (const j of finalList) {
-            // 4) post-processing (success computing)
             j.success = new UserJourneyPostProcessor(j.steps).computeSuccess();
-            // 5) intent derivation
             j.intent = deriveUserJourneyIntent(j, this.intentResolver);
             registry.add(j);
+
+            logger.log(
+                "trace",
+                "[UserJourneyRegistryBuilder] added: id=%s intent=%s success=%s",
+                j.id,
+                j.intent,
+                j.success
+            );
         }
 
         logger.info("[UserJourneyRegistryBuilder] Done: journeys=%d", registry.size());
@@ -105,6 +111,7 @@ export class UserJourneyRegistryBuilder {
     // ────────────────────────────────────────────────────────────────────────────
     // Collectors
     // ────────────────────────────────────────────────────────────────────────────
+
     /**
     * Route-scoped collector:
     * module → route → component → (widget₁ → interaction? → effect?) … → (terminal)
@@ -138,6 +145,13 @@ export class UserJourneyRegistryBuilder {
                 }
             }
         }
+
+        logger.log(
+            "trace",
+            "[UserJourneyRegistryBuilder] _collectRouteScoped: %d journeys",
+            out.length
+        );
+
         return out;
     }
 
@@ -163,14 +177,20 @@ export class UserJourneyRegistryBuilder {
                 })
             );
         }
+
+        logger.log(
+            "trace",
+            "[UserJourneyRegistryBuilder] _collectGlobal: %d journeys",
+            out.length
+        );
         return out;
     }
 
-    /** 
-     * Route-to-Route Collector:
-     * route→route / route→external transitions
-     * (routerLink|href|static-redirect).
-     */
+    /**
+    * Route-to-Route Collector:
+    * route→route / route→external transitions
+    * (routerLink | href | static-redirect).
+    */
     private _collectRouteToRoute(): UserJourney[] {
         const out: UserJourney[] = [];
 
@@ -197,6 +217,12 @@ export class UserJourneyRegistryBuilder {
 
             out.push({ rootModule: this.g.rootModuleId, id: journeyId, steps });
         }
+
+        logger.log(
+            "trace",
+            "[UserJourneyRegistryBuilder] _collectRouteToRoute: %d journeys",
+            out.length
+        );
 
         return out;
     }

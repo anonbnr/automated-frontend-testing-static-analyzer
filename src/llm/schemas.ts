@@ -1,21 +1,28 @@
-// src/llm/schemas.ts
-// ============================================================================
-// Runtime validation for /llm/journeys/refine using Zod.
-// ----------------------------------------------------------------------------
-// Shapes mirror the backend’s existing TypeScript models in /models:
-//   - AppNavigation  (nodes/edges/transitions)
-//   - RouteMap       (routes + redirections)
-//   - UserJourney    (id, rootModule, steps[], intent?, success?, source?)
-// ============================================================================
+// ──────────────────────────────────────────────────────────────────────────────
+// llm/schemas.ts
+//
+//  Zod runtime validation for `/llm/journeys/refine`.
+//  These shapes mirror TS models in /models/* while remaining *forward-
+//  compatible* in places where the platform may evolve (e.g., dynamic transition
+//  kinds, extra meta fields). The contract is kept strict where correctness matters
+//  (IDs, step order, presence of minimal fields) and permissive where future
+//  additions are likely.
+//
+//  Design choices
+//  --------------
+//  • Graph transitions: type is any non-empty string → easy to add new via kinds.
+//  • Response meta: `.catchall(z.any())` → models may include extra diagnostics.
+//  • Arrays default to [] in the response → downstream code can skip null checks.
+//  • Request must include at least one of {graph, routeMap} to anchor reasoning.
+// ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GRAPH VALIDATION
-// ----------------------------------------------------------------------------
-// Matches models/navigation-graph.ts
+// GRAPH VALIDATION (matches models/navigation-graph.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Node kinds supported by the navigation graph. */
 const GraphNodeType = z.enum([
     'module',
     'route',
@@ -26,35 +33,45 @@ const GraphNodeType = z.enum([
     'virtual-route',
 ]);
 
+/** A single graph node. */
 const GraphNode = z.object({
+    /** Unique node identifier (path, name, or URL). */
     id: z.string().min(1),
+    /** Node category used by assemblers/builders. */
     type: GraphNodeType,
+    /** Free-form attributes collected during analysis (optional). */
     attributes: z.record(z.string(), z.any()).optional(),
+    /** Validation rule identifiers attached to a widget/component (optional). */
     validationRules: z.array(z.string()).optional(),
+    /** Heuristic hint used by the assembler for submit-chains (optional). */
     triggersFormSubmission: z.boolean().optional(),
 });
 
-// Static edges are stable and strictly typed
+/** Static edge kinds defined by the structural graph. */
 const StaticGraphRelationType = z.enum(['contains', 'imports', 'declares']);
 
 
-// Dynamic transitions: accept ANY non-empty string to be forward-compatible
+/** Dynamic transitions are intentionally permissive (forward-compatible). */
 const DynamicGraphRelationType = z.string().min(1);
 
+/** Common relation/transition shape. */
 const GraphRelationBase = z.object({
     from: z.string().min(1),
     to: z.string().min(1),
     metadata: z.record(z.string(), z.any()).optional(),
 });
 
+/** A static relation (edge) between nodes (e.g., contains/imports/declares). */
 const GraphEdge = GraphRelationBase.extend({
     type: StaticGraphRelationType,
 });
 
+/** A dynamic transition (e.g., click, routerLink, href, service-call, submit). */
 const GraphTransition = GraphRelationBase.extend({
     type: DynamicGraphRelationType,
 });
 
+/** Full app navigation model used by journey builders. */
 export const AppNavigationSchema = z.object({
     nodes: z.array(GraphNode),
     edges: z.array(GraphEdge),
@@ -62,11 +79,10 @@ export const AppNavigationSchema = z.object({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ROUTE MAP VALIDATION
-// ----------------------------------------------------------------------------
-// Matches models/route-info.ts
+/** ROUTE MAP VALIDATION (matches models/route-info.ts) */
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Angular-like component route entry (use by the intent resolver). */
 const ComponentRoute = z.object({
     route: z.string().min(1),
     module: z.string().optional(),
@@ -81,6 +97,7 @@ const ComponentRoute = z.object({
     data: z.record(z.string(), z.string()).optional(),
 });
 
+/** Angular-like redirect entry (used by the intent resolver). */
 const RedirectRoute = z.object({
     route: z.string().min(1),
     module: z.string().optional(),
@@ -88,17 +105,17 @@ const RedirectRoute = z.object({
     pathMatch: z.enum(['full', 'prefix']).optional(),
 });
 
+/** Route map: component routes + explicit redirections. */
 export const RouteMapSchema = z.object({
     routes: z.array(ComponentRoute).default([]),
     redirections: z.array(RedirectRoute).default([]),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USER JOURNEYS VALIDATION
-// ----------------------------------------------------------------------------
-// Matches models/user-journeys/user-journey-info.ts
+/** USER JOURNEY VALIDATION (matches models/user-journeys/user-journey-info.ts) */
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** The allowed set of journey step kinds. */
 const JourneyStepType = z.enum([
     'module',
     'route',
@@ -110,10 +127,15 @@ const JourneyStepType = z.enum([
     'backend',
 ]);
 
+/** One atomic step in a journey sequence. */
 const JourneyStep = z.object({
+    /** The semantic kind of this step. */
     stepType: JourneyStepType,
+    /** The node identifier this step refers to (path/id/URL). */
     nodeId: z.string().min(1),
+    /** Optional interaction “via” (e.g., click, routerLink, href, submit, …). */
     via: z.string().optional(),
+    /** Arbitrary extra data (e.g., service/method/sourceEvent). */
     metadata: z.record(z.string(), z.any()).optional(),
 });
 
@@ -121,32 +143,45 @@ const JourneyStep = z.object({
 const PrunedPath = z.object({
     nodes: z.array(z.string()),
     relations: z.array(z.object({
-        type: z.string().min(1), // GraphRelationType union is large; keep permissive here
+        type: z.string().min(1), // keep permissive for future relation kinds
         from: z.string().min(1),
         to: z.string().min(1),
     })),
 }).optional();
 
+/** A complete user journey (id + ordered steps + optional annotations). */
 export const UserJourneySchema = z.object({
     id: z.string().min(1),
     rootModule: z.string().min(1),
+    /** Optional human label; the refiner may rename it. */
     name: z.string().optional(),
+    /** Optional workspace root (for provenance/storage). */
     projectRoot: z.string().optional(),
+    /** Ordered steps. */
     steps: z.array(JourneyStep).min(1),
+    /** Optional embedded subgraph context. */
     path: PrunedPath,
+    /** intent bucket derived from terminals. */
     intent: z.string().optional(),
+    /** Success flag (computed from error sentinels). */
     success: z.boolean().optional(),
+    /** Provenance: 'analyzer' for raw, 'llm' for refined/touched. */
     source: z.enum(['analyzer', 'llm']).optional(),
 });
 
+/** Convenience array wrapper. */
 export const UserJourneyArraySchema = z.array(UserJourneySchema);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REQUEST + RESPONSE VALIDATION
-// ----------------------------------------------------------------------------
-// Matches /llm/journeys/refine API contract (spec Phase A2)
+/** REQUEST + RESPONSE VALIDATION (for /llm/journeys/refine) */
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Request contract:
+ *  - analysisId: caller id (also used by rate-limiter).
+ *  - journeys: non-empty array of raw journeys (from analyzer or previous run).
+ *  - either a graph or a routeMap (or both) must be provided.
+ */
 export const RefineJourneysRequestSchema = z.object({
     analysisId: z.string().min(1),
     journeys: UserJourneyArraySchema.min(1),
@@ -157,6 +192,13 @@ export const RefineJourneysRequestSchema = z.object({
     path: ['graph'],
 });
 
+/**
+ * Response contract:
+ *  - Arrays default to [] so consumers can iterate safely.
+ *  - meta is extensible (catchall) to let models attach diagnostics.
+ *  - finalJourneys may be empty; the service can compute it from the other
+ *    fields when the model omits it.
+ */
 export const RefineJourneysResponseSchema = z.object({
     added: UserJourneyArraySchema.default([]),
     removed: z.array(z.string()).default([]),
@@ -171,7 +213,7 @@ export const RefineJourneysResponseSchema = z.object({
         requestId: z.string().optional(),
         tookMs: z.number().optional(),
         provider: z.string().optional(),
-        // --- new optional diagnostics the model can (should) return ---
+        // Optional model-authored diagnostics (pre/post coverage snapshots, etc.)
         understood: z.boolean().optional(),
         before: z.object({
             routeCoveragePct: z.number().optional(),
@@ -189,14 +231,18 @@ export const RefineJourneysResponseSchema = z.object({
         }).optional(),
         notes: z.array(z.string()).optional(),
     })
-        // allow future keys without relaxing core fields
+        // Allow new meta keys without rejecting the payload
         .catchall(z.any())
         .default({}),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TYPES (exported for TS inference)
+// TYPES (exported for inference in services/routes)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type RefineJourneysRequest = z.infer<typeof RefineJourneysRequestSchema>;
 export type RefineJourneysResponse = z.infer<typeof RefineJourneysResponseSchema>;
+export type UserJourney = z.infer<typeof UserJourneySchema>;
+export type JourneyStep = z.infer<typeof JourneyStep>;
+export type AppNavigation = z.infer<typeof AppNavigationSchema>;
+export type RouteMap = z.infer<typeof RouteMapSchema>;

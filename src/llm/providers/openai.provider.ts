@@ -1,10 +1,18 @@
-// src/llm/providers/openai.provider.ts
+// ──────────────────────────────────────────────────────────────────────────────
+// llm/providers/openai.provider.ts
+//
+//  OpenAI provider implementation of the generic LlmProvider interface.
+//  Thin wrapper around the Chat Completions endpoint, with optional JSON mode,
+//  timeout/abort support, and careful logging without leaking secrets.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import logger from "../../logging/logger.js";
 import { LlmProvider } from "../types.js";
 
 type OpenAIConfig = {
     apiKey: string;
     model: string;
-    baseUrl?: string;
+    baseUrl?: string; // default: https://api.openai.com/v1
     timeoutMs: number;
     maxTokens: number;
 };
@@ -28,9 +36,9 @@ export class OpenAIProvider implements LlmProvider {
     }
 
     /**
-     * Minimal wrapper to call OpenAI chat completions.
-     * NOTE: We intentionally keep this low-level; higher layers will shape prompts.
-     */
+    * Minimal wrapper to call OpenAI Chat Completions.
+    * NOTE: This is intentionally low-level; higher layers shape prompts.
+    */
     async complete(opts: {
         system?: string;
         prompt: string;
@@ -39,6 +47,13 @@ export class OpenAIProvider implements LlmProvider {
         temperature?: number;
         timeoutMs?: number;
     }): Promise<{ text?: string; json?: unknown }> {
+        if (!this.isConfigured()) {
+            const err = new Error("OpenAI provider is not configured (missing apiKey/model)");
+            (err as any).code = "LLM_MISCONFIGURED";
+            throw err;
+        }
+
+        const endpoint = (this.cfg.baseUrl || 'https://api.openai.com/v1') + '/chat/completions';
         const body = {
             model: this.cfg.model,
             messages: [
@@ -52,9 +67,19 @@ export class OpenAIProvider implements LlmProvider {
             seed: 123456
         };
 
-        const endpoint = (this.cfg.baseUrl || 'https://api.openai.com/v1') + '/chat/completions';
+        const timeout = opts.timeoutMs ?? this.cfg.timeoutMs;
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? this.cfg.timeoutMs);
+        const timer = setTimeout(() => ctrl.abort(), timeout);
+
+        logger.debug(
+            "[OpenAIProvider] POST %s model=%s json=%s maxTokens=%s temp=%s timeoutMs=%s",
+            endpoint.replace(/https?:\/\//, ''), // avoid noisy scheme
+            this.cfg.model,
+            !!opts.json,
+            body.max_tokens,
+            body.temperature,
+            timeout
+        );
 
         try {
             const res = await fetch(endpoint, {
@@ -62,6 +87,7 @@ export class OpenAIProvider implements LlmProvider {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.cfg.apiKey}`,
+                    'User-Agent': 'SoftScanner-LLM/1.0',
                 },
                 body: JSON.stringify(body),
                 signal: ctrl.signal,
@@ -69,24 +95,35 @@ export class OpenAIProvider implements LlmProvider {
 
             if (!res.ok) {
                 const text = await res.text().catch(() => '');
+                logger.warn("[OpenAIProvider] HTTP %d — %s", res.status, text || res.statusText);
                 throw new Error(`OpenAI error ${res.status}: ${text || res.statusText}`);
             }
 
             const data: any = await res.json();
             const text: string = data?.choices?.[0]?.message?.content ?? '';
+
+            // Log payload size rather than content
+            logger.log(
+                "trace",
+                "[OpenAIProvider] received %d chars (finish_reason=%s)",
+                text.length,
+                data?.choices?.[0]?.finish_reason ?? "?"
+            );
+
             return { text, json: opts.json ? tryParseJson(text) : undefined };
         }
         catch (e: any) {
             if (e?.name === 'AbortError') {
-                // Make it easy for the route to classify this as a timeout
                 const err = new Error('LLM request aborted (timeout)');
                 (err as any).name = 'AbortError';
+                logger.warn("[OpenAIProvider] AbortError after %d ms", timeout);
                 throw err;
             }
+            logger.error("[OpenAI] request failed: %o", e);
             throw e;
         }
         finally {
-                clearTimeout(timer);
-            }
+            clearTimeout(timer);
         }
     }
+}

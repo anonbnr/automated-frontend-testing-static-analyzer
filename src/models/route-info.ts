@@ -1,14 +1,23 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // models/route-info.ts
 //
-// Contains types for routing configuration, component-role classification,
-// and the combined route map used by the analyzer:
-//   - Route               (base path + declaring module)
-//   - ComponentRoute      (loads a component or lazy module)
-//   - RedirectRoute       (redirects one path to another)
-//   - RouteMap            (all routes + all redirects)
-//   - ComponentRouteRole  (classifies components wrt routes)
-//   - ComponentRouteMap   (raw RouteMap + component-role assignments)
+// Purpose
+//   Canonical types for Angular routing used by analyzers/builders:
+//     - Route              : common base for component/redirect entries
+//     - ComponentRoute     : renders a component (eager/standalone) or lazy module
+//     - RedirectRoute      : immediate redirection
+//     - RouteMap           : project-wide raw route configuration
+//     - ComponentRouteRole : component classification w.r.t. routes
+//     - ComponentRouteMap  : RouteMap + components grouped by role
+//
+// Notes
+//   • `route` values are Angular path segments (no leading slash). The empty
+//     string "" denotes the default segment at its level.
+//   • `module` holds the NgModule class name that *declared* the route.
+//   • Exactly one of `component` | `loadChildren` | `loadComponent` is used
+//     by Angular per route; they are optional here to support static analysis
+//     across versions and patterns.
+//   • Guards/resolvers/data are recorded by class-name strings / string maps.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { ComponentInfo } from "./component-info.js";
@@ -17,70 +26,77 @@ import { ComponentInfo } from "./component-info.js";
  * Base information common to both component and redirect routes.
  */
 export interface Route {
-    /** The path of this route (e.g. "dashboard", "users/:id", or "" for root). */
+    /**
+    * Angular path segment for this route (e.g., "dashboard", "users/:id", or
+    * "" for the default/empty segment at its level). No leading slash.
+    */
     route: string;
 
-    /** The NgModule class name that declared this route. */
+    /**
+    * The NgModule class name that declared this route.
+    * Optional to accommodate standalone-routing-only projects or cases where
+    * attribution is not available from static analysis.
+    */
     module?: string;
 }
 
 /**
- * A route that loads either:
- *  - an eager component, or
- *  - a lazy NgModule, or
- *  - a standalone component (via `loadComponent`)
+ * A route that renders content by either:
+ *  • an eager component (`component`)
+ *  • a lazy-loaded NgModule (`loadChildren`)
+ *  • a standalone component (`loadComponent`, Angular v15+)
+ *
+ * Only one of these is expected to be present at runtime configuration,
+ * but all are optional here for analysis flexibility.
  */
 export interface ComponentRoute extends Route {
-    /** Eager-loaded component class name (e.g. "DashboardComponent"). */
+    /** Eager-loaded component class name (e.g., "DashboardComponent"). */
     component?: string;
 
-    /** Lazy-loaded module factory expression. */
+    /**
+    * Lazy-loaded module factory expression as a stringified representation of
+    * the configured `loadChildren` (e.g., a dynamic import call).
+    */
     loadChildren?: string;
 
-    /** Standalone component loader (Angular v15+). */
+    /**
+    * Standalone component loader expression (Angular v15+),
+    * stringified representation of the configured `loadComponent`.
+    */
     loadComponent?: string;
 
-    /** `pathMatch` strategy: `"full"` or `"prefix"` (default `"prefix"`). */
+    /** `pathMatch` strategy for this route. Defaults to `"prefix"` in Angular. */
     pathMatch?: "full" | "prefix";
 
     /**
-     * Any `canActivate` guard classes (e.g. `["AuthGuard", "AdminGuard"]`).
-     * Guard classes listed here must implement `CanActivate` and will be invoked
-     * before activating this route. This array will be empty if no `canActivate` guards are specified.
-     */
+    * Guard classes that implement `CanActivate`, invoked before activating
+    * this route. Empty/undefined if not specified.
+    */
     canActivate?: string[];
 
     /**
-     * Any `canActivateChild` guard classes (e.g. `["AdminChildGuard"]`).
-     * Guard classes listed here must implement `CanActivateChild` and will be invoked
-     * when navigating to any child of this route. Useful to protect nested routes under a parent.
-     * This array will be empty if no `canActivateChild` guards are specified.
-     */
+    * Guard classes that implement `CanActivateChild`, invoked for navigation
+    * to any child of this route. Empty/undefined if not specified.
+    */
     canActivateChild?: string[];
 
     /**
-     * Any `canLoad` guard classes (e.g. `["AuthGuard"]`).
-     * Guard classes listed here must implement `CanLoad` and will be invoked
-     * before Angular attempts to lazy‐load a module for this route. This prevents
-     * the module from being fetched if the guard denies access. This array will be
-     * empty if no `canLoad` guards are specified.
-     */
+    * Guard classes that implement `CanLoad`, invoked before Angular attempts
+    * to lazy-load a module for this route. Empty/undefined if not specified.
+    */
     canLoad?: string[];
 
     /**
-     * Any resolver entries (e.g. `{ user: "UserResolver", settings: "SettingsResolver" }`).
-     * A resolver is a service that implements `Resolve<T>`. Angular will execute the
-     * specified resolver(s) before activating the route, and make the returned data
-     * available under the specified key(s). This object will be empty if no resolvers are defined.
-     */
+    * Resolver entries (key → resolver class name). Each resolver implements
+    * `Resolve<T>`; Angular executes them before activation and exposes the
+    * resolved values via `ActivatedRoute.data`.
+    */
     resolve?: Record<string, string>;
 
     /**
-     * Arbitrary static data that can be passed to the route (e.g. `{ title: "User Profile", icon: "user" }`).
-     * This data object will be available via the ActivatedRoute’s `data` observable.
-     * Use this to provide custom labels, icons, or other metadata. This object will be
-     * empty if no static `data` is specified on the route.
-     */
+    * Arbitrary static data attached to the route (key → string).
+    * Available via `ActivatedRoute.data`. Commonly used for titles, icons, etc.
+    */
     data?: Record<string, string>;
 }
 
@@ -88,20 +104,21 @@ export interface ComponentRoute extends Route {
  * A route that immediately redirects to another path.
  */
 export interface RedirectRoute extends Route {
-    /** The target path to which this route redirects. */
+    /** The target path to which this route redirects (Angular path segment). */
     redirectTo: string;
 
-    /** `pathMatch` strategy for the redirect (default `"prefix"`). */
+    /** `pathMatch` strategy for the redirect. Defaults to `"prefix"` in Angular. */
     pathMatch?: "full" | "prefix";
 }
 
 /**
- * The application’s raw routing configuration:
- *  - `routes`      : all component-loading routes
- *  - `redirections`: all redirect-only routes
+ * The application's raw routing configuration as discovered by static analysis.
+ *
+ * - `routes`       : all component-/lazy-module-loading routes
+ * - `redirections` : all redirect-only routes
  */
 export interface RouteMap {
-    /** Routes that load a component or lazy module. */
+    /** Routes that load a component or lazy module (directly or via standalone). */
     routes: ComponentRoute[];
 
     /** Routes that simply redirect elsewhere. */
@@ -109,13 +126,13 @@ export interface RouteMap {
 }
 
 /**
- * How a component participates in the application’s routes:
+ * How a component participates in the application's routes:
  *
- * - `root`   — the `<app-root>` component  
- * - `global` — present (transitively) on *every* route  
- * - `shared` — appears on multiple-but-not-all routes  
- * - `mapped` — tied to exactly one route (via direct or lazy mapping)  
- * - `dead`   — never used by any route  
+ * - `root`   — the `<app-root>` host component
+ * - `global` — present (transitively) on *every* route
+ * - `shared` — present on multiple-but-not-all routes
+ * - `mapped` — tied to exactly one route (direct or lazy mapping)
+ * - `dead`   — not reachable under any route
  */
 export type ComponentRouteRole
     = 'root'
@@ -125,20 +142,20 @@ export type ComponentRouteRole
     | 'dead'
 
 /**
- * Combines the raw routing map with each component’s role classification.
+ * Combines the raw routing map with each component's role classification.
  */
 export interface ComponentRouteMap {
     /** The raw routing configuration (all ComponentRoute + RedirectRoute). */
     routeMap: RouteMap;
 
     /**
-     * Components grouped by their RouteRole.
-     *
-     * - root:  [ ComponentInfo for `<app-root>` ]  
-     * - global: present on all routes  
-     * - shared: present on >1 but <all routes  
-     * - mapped: present on exactly 1 route  
-     * - dead: never present under any route  
-     */
+    * Components grouped by their RouteRole.
+    *
+    * - root:   [ComponentInfo for `<app-root>`]
+    * - global: present on all routes
+    * - shared: present on >1 but <all routes
+    * - mapped: present on exactly 1 route
+    * - dead:   never present under any route
+    */
     roles: Record<ComponentRouteRole, ComponentInfo[]>;
 }

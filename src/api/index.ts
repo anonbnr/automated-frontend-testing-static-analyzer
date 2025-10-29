@@ -2,12 +2,12 @@
 // api/index.ts
 //
 // Static Analyzer API bootstrap:
-//  - Creates an Express app
-//  - Applies shared middleware (CORS, JSON body parsing)
-//  - Mounts feature routers
-//  - Adds a tiny health endpoint
-//  - Installs centralized error handler
-//  - Starts the HTTP server
+//   • Creates an Express application
+//   • Applies shared middleware (CORS, JSON parsing)
+//   • Registers all feature routers in one place
+//   • Exposes a lightweight health endpoint (/healthz)
+//   • Installs a centralized error handler
+//   • Starts the HTTP server on the configured port
 // ──────────────────────────────────────────────────────────────────────────────
 
 import express, { Express, Request, Response } from 'express';
@@ -31,17 +31,25 @@ import widgetsRouter from './routes/widgets.js';
 const app: Express = express();
 
 // ── GLOBAL MIDDLEWARE ─────────────────────────────────────────────────────────
+// Order matters: CORS first, then JSON parsing.
 app.use(corsMiddleware);
 app.use(jsonBodyParser);
 
 // ── HEALTH ───────────────────────────────────────────────────────────────────
+/**
+ * Liveness/readiness probe.
+ * Returns `{ ok: true }` and disables caching to avoid stale health checks.
+ */
 app.get("/healthz", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
     res.json({ ok: true });
 });
 
 // ── ROUTES ────────────────────────────────────────────────────────────────────
-/** Centralized router registration keeps index clean and consistent. */
+/**
+ * Centralized router registration keeps the bootstrap concise
+ * and provides a one-glance overview of available endpoints.
+ */
 const ROUTES: Array<[path: string, router: any]> = [
     ["/modules", modulesRouter],
     ["/components", componentsRouter],
@@ -61,6 +69,7 @@ const ROUTES: Array<[path: string, router: any]> = [
 for (const [path, router] of ROUTES) app.use(path, router);
 
 // ── ERROR HANDLING ────────────────────────────────────────────────────────────
+// Should be registered after all route handlers.
 app.use(errorHandler);
 
 // ── START SERVER ───────────────────────────────────────────────────────────────

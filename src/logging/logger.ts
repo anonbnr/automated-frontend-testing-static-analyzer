@@ -1,16 +1,29 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // logging/logger.ts
 //
-// Singleton Winston logger for the StaticAnalyzer API.
+// Defines and exports a singleton **Winston** logger instance
+// for the StaticAnalyzer backend.
 //
 // Responsibilities:
-//   - Creates `logs/` directory (if missing) alongside this module.
-//   - Writes daily‐rotated JSON logs under `logs/`:
-//       - `error-YYYY-MM-DD.log` for errors (level ≥ error)
-//       - `combined-YYYY-MM-DD.log` for all messages (level ≥ debug/info)
-//   - Outputs colorized, human‐readable logs to the console in non‐production.
-//   - Captures uncaught exceptions and promise rejections.
-//   - Exports a single `logger` instance for use across the codebase.
+//   • Create a persistent `logs/` directory (if missing).
+//   • Configure daily‐rotated JSON log files:
+//       – `error-YYYY-MM-DD.log`   → level ≥ error
+//       – `combined-YYYY-MM-DD.log` → level ≥ trace (all messages)
+//   • Provide a colorized, human-readable console output in development.
+//   • Handle uncaught exceptions and unhandled promise rejections.
+//
+// Design notes:
+//   • Uses winston-daily-rotate-file for automatic daily log rotation.
+//   • Emits structured JSON logs for machine readability.
+//   • The console output remains concise and colorized for human users.
+//   • Custom log levels (trace/debug/info/warn/error) allow fine control.
+//
+// Usage:
+//   ```ts
+//   import logger from '../logging/logger.js';
+//   logger.info('Analyzer started');
+//   logger.error('Unexpected failure: %o', err);
+//   ```
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { existsSync, mkdirSync } from 'fs';
@@ -19,16 +32,24 @@ import { fileURLToPath } from 'url';
 import { addColors, createLogger, format, transports } from 'winston';
 import 'winston-daily-rotate-file';
 
-// Helpers to emulate __dirname in ES modules
+// ──────────────────────────────────────────────────────────────────────────────
+// Resolve filesystem paths
+// Winston uses ESM; emulate __dirname via fileURLToPath.
+// ──────────────────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure log directory exists
+// ──────────────────────────────────────────────────────────────────────────────
+// Ensure the logs directory exists (one level above `src/logging/`).
+// ──────────────────────────────────────────────────────────────────────────────
 const logDir = join(__dirname, '../../logs');
 if (!existsSync(logDir))
     mkdirSync(logDir, { recursive: true });
 
-// 1) Define custom log levels and colors
+// ──────────────────────────────────────────────────────────────────────────────
+// Define custom logging levels and associated console colors.
+// Lower number = higher priority.
+// ──────────────────────────────────────────────────────────────────────────────
 const customLevels = {
     levels: {
         error: 0,
@@ -46,36 +67,42 @@ const customLevels = {
     }
 };
 
-// 2) Tell Winston about your colors
+// Register custom colors with Winston for console output
 addColors(customLevels.colors);
 
-
+// ──────────────────────────────────────────────────────────────────────────────
+// Create the singleton Winston logger instance.
+// ──────────────────────────────────────────────────────────────────────────────
 
 /**
  * Winston logger instance configured with:
- *  - Console transport for human‐readable output (colorized in dev)
- *  - DailyRotateFile for `error`-level logs
- *  - DailyRotateFile for all logs
- *  - Exception & rejection handlers
+ *  • Console transport (colorized output in dev)
+ *  • DailyRotateFile transport for `error` logs
+ *  • DailyRotateFile transport for combined logs
+ *  • Exception/rejection handlers for robustness
  *
- * Levels:
- *  - `error` → goes to error-*.log
- *  - `info` and above → go to combined-*.log
- *  - `debug` and above → console in non-production
+ * File outputs are in JSON for structured log ingestion;
+ * Console output remains formatted for readability.
  */
 const logger = createLogger({
     levels: customLevels.levels,
+
+    // Default log level: verbose in dev, quieter in production
     level: process.env.NODE_ENV === 'production' ? 'info' : 'trace',
+
+    // Base format: timestamped structured JSON for file outputs
     format: format.combine(
         format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        format.errors({ stack: true }),               // include stack trace in error logs
-        format.splat(),                               // enable printf-style `%d` formatting
-        format.json()                                 // output as JSON for files
+        format.errors({ stack: true }), // preserve stack traces
+        format.splat(), // enable printf-style placeholders (%s, %d, etc.)
+        format.json() // file logs stored as JSON
     ),
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Define transports (output targets)
+    // ──────────────────────────────────────────────────────────────────────────
     transports: [
-        // ──────────────────────────────────────────────────────────────────────────
-        // Console transport (colorized) for development
-        // ──────────────────────────────────────────────────────────────────────────
+        // Console: human-readable, colorized, minimal metadata
         new transports.Console({
             format: format.combine(
                 format.colorize({ all: true }),
@@ -87,20 +114,16 @@ const logger = createLogger({
             )
         }),
 
-        // ──────────────────────────────────────────────────────────────────────────
-        // Daily rotated file for errors only (level ≥ error)
-        // ──────────────────────────────────────────────────────────────────────────
+        // File: errors only, rotated daily
         new transports.DailyRotateFile({
             dirname: logDir,
             filename: 'error-%DATE%.log',
             datePattern: 'YYYY-MM-DD',
             level: 'error',
-            maxFiles: '14d'
+            maxFiles: '14d' // retain 14 days of logs
         }),
 
-        // ──────────────────────────────────────────────────────────────────────────
-        // Daily rotated file for all logs (level ≥ debug/info)
-        // ──────────────────────────────────────────────────────────────────────────
+        // File: all logs (trace/debug/info/warn/error), rotated daily
         new transports.DailyRotateFile({
             dirname: logDir,
             filename: 'combined-%DATE%.log',
@@ -109,8 +132,9 @@ const logger = createLogger({
             maxFiles: '14d'
         })
     ],
+
     // ──────────────────────────────────────────────────────────────────────────
-    // Handle uncaught exceptions and promise rejections
+    // Capture runtime errors to persistent files
     // ──────────────────────────────────────────────────────────────────────────
     exceptionHandlers: [
         new transports.File({ filename: path.join(logDir, 'exceptions.log') })
@@ -120,4 +144,7 @@ const logger = createLogger({
     ]
 });
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Export singleton instance for use across all modules.
+// ──────────────────────────────────────────────────────────────────────────────
 export default logger;

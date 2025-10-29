@@ -1,10 +1,37 @@
-// src/api/routes/capabilities.ts
+// ──────────────────────────────────────────────────────────────────────────────
+// api/routes/capabilities.ts
+//
+//  GET /capabilities
+//  -----------------
+//  Purpose:
+//    Report backend/environment capabilities, including whether
+//    the LLM engine is both *enabled* and *properly configured*.
+//
+//  Response (200):
+//  {
+//    "success": true,
+//    "backend": {
+//      "version": "1.2.3",         // read from package.json (fallback "0.0.0")
+//      "node": "18.19.0+",
+//      "apiJsonLimit": "1mb"       // from env.API_JSON_LIMIT
+//    },
+//    "features": ["analysis","graph","user-journeys","screenshots","llm?"],
+//    "llm": {
+//      "enabled": true|false,       // true only if enabled AND configured
+//      "provider": "openai" | null,
+//      "model": "gpt-4o-mini" | null,
+//      "maxTokens": number | null,
+//      "rateLimitPerMin": number | null,
+//      "cacheTtlSec": number | null
+//    }
+//  }
+// ──────────────────────────────────────────────────────────────────────────────
+
 import { Router } from 'express';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
 import { makeLlmProvider } from '../../llm/factory.js';
 import logger from '../../logging/logger.js';
-import { BACKEND_ROOT, env, getLlmMisconfigHint } from '../env.js';
+import { env, getLlmMisconfigHint } from '../env.js';
+import { readBackendVersion, rid } from '../utils.js';
 
 /**
  * GET /capabilities
@@ -13,15 +40,22 @@ import { BACKEND_ROOT, env, getLlmMisconfigHint } from '../env.js';
  */
 const router = Router();
 
+/**
+ * GET /capabilities
+ * Reports platform capabilities and LLM availability.
+ * AC: includes "llm" in features only when the LLM is enabled AND configured.
+ */
 router.get('/', (_req, res) => {
-    // Backend details
+    const requestId = rid();
+
+    // Backend details (always available)
     const backend = {
         version: readBackendVersion(),
         node: `${process.versions.node}+`,
         apiJsonLimit: env.API_JSON_LIMIT,
     };
 
-    // LLM availability
+    // LLM availability (enabled + properly configured)
     const hint = getLlmMisconfigHint();
     const provider = makeLlmProvider();
     const llmEnabled = !hint && !!provider?.isConfigured();
@@ -34,9 +68,12 @@ router.get('/', (_req, res) => {
         cacheTtlSec: env.llm.journeysCacheTtlSec ?? null,
     }
 
-    // Features (add "llm" only when enabled & configured)
+    // Static capabilities + LLM feature gate
     const features = ['analysis', 'graph', 'user-journeys', 'screenshots'];
     if (llmEnabled) features.push('llm');
+
+    // Observability header
+    res.setHeader('X-Request-Id', requestId);
 
     logger.info('[/capabilities] %j', { backend, features, llm });
 
@@ -47,15 +84,5 @@ router.get('/', (_req, res) => {
         llm,
     });
 });
-
-function readBackendVersion(): string {
-    try {
-        const pkgPath = resolve(BACKEND_ROOT, 'package.json');
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-        return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
-    } catch {
-        return '0.0.0';
-    }
-}
 
 export default router;

@@ -1,15 +1,32 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // builders/module-registry-builder.ts
 //
-// Phase 1: Scan every @NgModule and build a partial ModuleInfo list:
-//   - imports, declarations, exports, bootstrap
-//   - classify roles: root, routing, external, shared, global
+// Purpose
+//   Two-phase builder that discovers Angular @NgModule metadata and produces
+//   a ModuleRegistry. It also annotates routes with their declaring module
+//   and flags lazy-loaded modules.
 //
-// Phase 2: Given a ComponentRouteMap, tag:
-//   - each module.lazy = true for loadChildren
-//   - each route.module = declaring NgModule
+// Phases
+//   1) discoverModules()
+//        • Scans every @NgModule across the Project
+//        • Extracts imports / declarations / exports / bootstrap
+//        • Classifies role: 'root' | 'routing' | 'external' | 'shared' | 'global'
+//   2) assignRoutesToModules(ComponentRouteMap)
+//        • For lazy routes (loadChildren), sets ModuleInfo.lazy = true and tags route.module
+//        • For eager routes (component), tags route.module by declaration owner
 //
-// Produces a ModuleRegistry for downstream steps.
+// Output
+//   • `.registry` → ModuleRegistry snapshot for downstream analyzers/builders.
+//
+// Notes
+//   • Role classification:
+//       - 'root'     → has bootstrap entries
+//       - 'routing'  → imports include RouterModule.forRoot/forChild
+//       - 'external' → declares nothing and only imports from non-relative packages
+//       - 'shared'   → default for non-root/non-routing/local modules
+//       - 'global'   → promoted from 'shared' if imported directly by the root module
+//   • Lazy detection is based on the standard dynamic import then(..) pattern,
+//     e.g. loadChildren: () => import('./x').then(m => m.FooModule).
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { Project, SourceFile, SyntaxKind } from "ts-morph";
@@ -19,37 +36,41 @@ import { ComponentRouteMap } from "../models/route-info.js";
 import { AstUtils } from "../parsers/ast-utils.js";
 
 /**
- * Two-phase builder for an NgModule registry:
+ * Two-phase @NgModule registry builder.
  *
- * 1. discoverModules():
- *    - walks the Project for every @NgModule
- *    - collects ModuleInfo (lazy=false) and classifies root/routing/external/shared/global
+ * 1) discoverModules()
+ *    - Walk all source files for @NgModule classes
+ *    - Capture ModuleInfo entries (lazy=false initially)
+ *    - Classify roles (root/routing/external/shared, later 'global')
  *
- * 2. assignRoutesToModules():
- *    - marks lazy=true for any loadChildren
- *    - sets route.module for eager and lazy routes
+ * 2) assignRoutesToModules(compRouteMap)
+ *    - For each route, infer and assign the declaring module name
+ *    - Mark ModuleInfo.lazy=true when referenced by loadChildren
  *
- * Finally exposes `.registry` → ModuleRegistry.
- * 
- * @example
- *  ```ts
- *  const builder = new ModuleRegistryBuilder(project);
- *  await builder.discoverModules();
- *  builder.assignRoutesToModules(compRouteMap);
- *  const registry = builder.registry;
- *  logger.info(registry.modules);
+ * Usage:
+ * ```ts
+ * const builder = new ModuleRegistryBuilder(project);
+ * await builder.discoverModules();
+ * builder.assignRoutesToModules(componentRouteMap);
+ * const registry = builder.registry;
  * ```
  */
 export class ModuleRegistryBuilder {
+    /** Accumulated ModuleInfo snapshot (rebuilt on discoverModules). */
     private _modules: ModuleInfo[] = [];
+
+    /** Lazily-constructed registry exposing read-only access to `_modules`. */
     private _registry!: ModuleRegistry;
 
     /**
-     * @param project  A ts-morph Project initialized with the Angular tsconfig.
-     */
+    * @param project A ts-morph Project configured with the Angular workspace tsconfig.
+    */
     constructor(private project: Project) { }
 
-    /** After scanning, expose a ModuleRegistry. */
+    /**
+    * Read-only view of the discovered modules.
+    * Constructed on first access to mirror the current `_modules` snapshot.
+    */
     get registry(): ModuleRegistry {
         if (!this._registry) {
             this._registry = new ModuleRegistry(this._modules);
@@ -58,37 +79,45 @@ export class ModuleRegistryBuilder {
         return this._registry;
     }
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // Phase 1 — Discovery & Role Classification
+    // ────────────────────────────────────────────────────────────────────────────
+
     /**
-     * Phase 1: scan for @NgModule declarations and classify their role.
-     *
-     * Resets any previously discovered modules.
-     *
-     * After calling this, use `.registry.modules` to inspect.
-     *
-     * @returns Promise that resolves once all modules are discovered.
-     */
+    * Scans the Project for @NgModule declarations and classifies each module's role.
+    *
+    * Workflow:
+    *  • Reset internal state
+    *  • For each .ts file:
+    *      - For each class with @NgModule({...}):
+    *          · Extract imports/declarations/exports/bootstrap
+    *          · Classify role = root | routing | external | shared
+    *          · Push ModuleInfo (lazy=false)
+    *  • Promote 'global' modules (shared modules directly imported by the root module)
+    *
+    * Side effects:
+    *  • Overwrites `_modules` with the new snapshot
+    *
+    * @returns Promise<void> that resolves when discovery completes.
+    */
     async discoverModules(): Promise<void> {
         logger.info('[ModuleRegistryBuilder] Starting module discovery');
-        this._modules = [];      // reset from previous runs
+        this._modules = []; // reset from previous runs
 
-        // 1) Iterate through every source file in the project
+        // Iterate every source file for @NgModule classes
         for (const sf of this.project.getSourceFiles()) {
-            // only consider TypeScript files
+            // Only consider TS files
             if (!sf.getFilePath().endsWith(".ts")) {
                 logger.log('trace', "[ModuleRegistryBuilder] Skipping non-TS file %s", sf.getFilePath());
                 continue;
             }
 
-            // 2) For each class declaration, check for a `@NgModule` decorator
             for (const cls of sf.getClasses()) {
-                const dec = cls
-                    .getDecorator('NgModule');
+                // Find @NgModule decorator
+                const dec = cls.getDecorator('NgModule');
+                if (!dec) continue;
 
-                // Not an Angular module
-                if (!dec)
-                    continue;
-
-                // Retrieve the object used to parameterize the module
+                // Extract the object literal passed to @NgModule({...})
                 const objLit = dec.getArguments()[0].asKind(SyntaxKind.ObjectLiteralExpression);
                 if (!objLit) {
                     logger.warn(
@@ -98,18 +127,17 @@ export class ModuleRegistryBuilder {
                     continue;
                 }
 
-                // Retrieve class name and file path
+                // Basic identifiers (class name and file path)
                 const name = cls.getName()!;
                 const filePath = sf.getFilePath();
 
-                // Extract arrays from the decorator
-                // 1) imports/declarations/exports
+                // Extract arrays from the decorator (imports/declarations/exports)
                 const imports = AstUtils.getPropAsStringArray(objLit, 'imports');
                 const declarations = AstUtils.getPropAsStringArray(objLit, 'declarations');
                 const exports = AstUtils.getPropAsStringArray(objLit, 'exports');
                 const bootstrap = AstUtils.getPropAsStringArray(objLit, 'bootstrap');
 
-                // 2) determine roles (except global which will be determined at the end)
+                // Role classification (initial)
                 const isRoot = bootstrap.length > 0;
                 const hasRouting = imports.some(i => /RouterModule\.(forRoot|forChild)/.test(i));
                 const isExternal = this._isExternalModule(sf, imports, declarations);
@@ -123,7 +151,8 @@ export class ModuleRegistryBuilder {
                             : "shared";
 
                 logger.info(`[ModuleRegistryBuilder] Found @NgModule %s (role=%s) in %s`, name, role, filePath);
-                // 3) construct module info and push it into the array of module infos
+
+                // Record module snapshot (lazy resolved later)
                 this._modules.push({
                     name,
                     filePath,
@@ -136,7 +165,7 @@ export class ModuleRegistryBuilder {
             }
         }
 
-        // 4) identify modules with the role "global"
+        // Promote 'global' modules: any 'shared' imported directly by the root module
         const rootMod = this._modules.find(m => m.role === 'root');
         if (rootMod) {
             for (const imp of rootMod.imports) {
@@ -151,22 +180,26 @@ export class ModuleRegistryBuilder {
         logger.info("[ModuleRegistryBuilder] Module discovery complete: %d modules", this._modules.length);
     }
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // Phase 2 — Route↔Module Wiring & Lazy Flags
+    // ────────────────────────────────────────────────────────────────────────────
+
     /**
-     * Phase 2: wire up lazy flags and module→route associations.
-     *
-     * For each route in `compRouteMap.routeMap.routes`:
-     *  - If `loadChildren` is present, finds the NgModule name, sets `.lazy = true` on that ModuleInfo, and assigns `route.module`.
-     *  - Else if `component` is present, finds the declaring ModuleInfo (by looking at its `declarations`) and assigns `route.module`.
-     *
-     * @param compRouteMap ComponentRouteMap whose `.routeMap.routes` will be annotated.
-     * @modifies compRouteMap.routeMap.routes[*].module
-     * @modifies internal ModuleInfo[].lazy flags
-     */
+    * Annotates routes with their declaring module name and marks lazy modules.
+    *
+    * Rules:
+    *  • If `r.component` is set → find ModuleInfo where `declarations` includes it → set `r.module`
+    *  • If `r.loadChildren` is set → extract module class from `.then(m => m.XxxModule)` → set `r.module` and mark ModuleInfo.lazy=true
+    *
+    * @param compRouteMap ComponentRouteMap whose `.routeMap.routes` will be annotated.
+    * @modifies compRouteMap.routeMap.routes[*].module
+    * @modifies internal ModuleInfo[].lazy flags
+    */
     assignRoutesToModules(compRouteMap: ComponentRouteMap) {
         const modules = this._modules;
 
         for (const r of compRouteMap.routeMap.routes) {
-            // 1) eager component: find the module that declared this component
+            // Eager component route → look up declaring module by declarations[]
             if (r.component) {
                 const m = modules.find(m => m.declarations.includes(r.component!));
                 if (m) {
@@ -175,7 +208,7 @@ export class ModuleRegistryBuilder {
                 }
             }
 
-            // 2) lazy modules
+            // Lazy module route → parse .then(m => m.SomeModule)
             if (r.loadChildren) {
                 const match = /\.then\(\s*\w+\s*=>\s*\w+\.(\w+)\)/.exec(r.loadChildren);
                 if (match) {
@@ -193,35 +226,39 @@ export class ModuleRegistryBuilder {
         logger.info("[ModuleRegistryBuilder] Route→module assignment done");
     }
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // Heuristics — External Module Detection
+    // ────────────────────────────────────────────────────────────────────────────
+
     /**
-     * Determines whether a given NgModule should be classified as “external”.
-     *
-     * A module is considered external if:
-     *   1. It declares no own components/directives/pipes (`declarations` is empty).
-     *   2. It has at least one import in its `imports` array.
-     *   3. Every imported symbol comes from a non-relative package specifier
-     *      (i.e. it only re-exports symbols from third-party or Angular packages).
-     *
-     * @param sourceFile    The ts-morph SourceFile for this module, used to inspect its import statements.
-     * @param imports       The list of symbol names from the NgModule’s `imports` array.
-     * @param declarations  The list of symbol names from the NgModule’s `declarations` array.
-     * @returns `true` if this module declares nothing and only imports from non-relative packages; otherwise `false`.
-     */
+    * Determines whether an NgModule is “external”.
+    *
+    * Definition:
+    *  • Declares nothing (declarations.length === 0)
+    *  • Has ≥1 entry in `imports`
+    *  • Every imported symbol is brought from a non-relative module specifier
+    *    (i.e., NOT starting with "." or "/")
+    *
+    * @param sourceFile   The module's SourceFile (to inspect import statements).
+    * @param imports      Symbols listed under the NgModule's `imports: []`.
+    * @param declarations Symbols listed under `declarations: []`.
+    * @returns true if the module is purely external; otherwise false.
+    */
     private _isExternalModule(sourceFile: SourceFile, imports: string[], declarations: string[]) {
         if (declarations.length > 0 || imports.length === 0)
             return false;
 
-        // Gather all TS import declarations in this file
+        // All import declarations within the file
         const allImportDecls = sourceFile.getImportDeclarations();
 
-        // Check that every imported symbol comes from an external (non-relative) module
+        // Keep only symbols whose import declaration points to a non-relative specifier
         const externalImports = imports.filter(modName => {
-            // find the import that brought in this symbol
+            // Find the TS import that introduced this symbol
             const decl = allImportDecls.find(d =>
                 d.getNamedImports().some(n => n.getName() === modName)
             );
             if (!decl)
-                // if we can’t find the import, assume it’s local/unknown → not external
+                // If we cannot resolve the import, treat as local/unknown (not external)
                 return false;
 
             const spec = decl.getModuleSpecifierValue();

@@ -13,7 +13,7 @@ import { Request, Response, Router } from 'express';
 import logger from '../../logging/logger.js';
 import { StaticAnalyzer } from '../../orchestrators/static-analyzer.js';
 import { resolveTsConfig } from '../utils.js';
-import { getNavigationGraph, setNavigationGraph } from '../../adapters/appCache.js';
+import * as appCache from '../../adapters/appCache.js';
 import { UnsupportedOperation } from 'puppeteer';
 
 const router = Router();
@@ -68,10 +68,10 @@ router.post('/', async (req: Request, res: Response) => {
     );
     const analyzer = new StaticAnalyzer(tsConfig);
     
-    let graph = getNavigationGraph(projectRoot);
+    let graph = appCache.getNavigationGraph(projectRoot);
     if (!graph) {
       graph = await analyzer.analyze();
-      setNavigationGraph(projectRoot, graph, analyzer.compRouteMap);
+      appCache.setNavigationGraph(projectRoot, graph, analyzer.compRouteMap);
     }
     else {
       logger.info("[POST /graph] Getting navigation graph from cache");

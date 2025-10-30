@@ -20,6 +20,7 @@ import logger from "../../logging/logger.js";
 import { AppNavigation } from "../../models/navigation-graph.js";
 import { UserJourney } from "../../models/user-journeys/user-journey-info.js";
 import { parseActions } from "../../parsers/stage-action-dsl.js";
+import * as appCache from "../../adapters/appCache.js";
 
 const router = Router();
 
@@ -64,37 +65,69 @@ router.post("/parse", (req: Request, res: Response) => {
 router.post("/infer", (req: Request, res: Response) => {
     const started = performance.now();
     try {
-        const journey = req.body?.journey as UserJourney | undefined;
-        const graph = (req.body?.graph ?? null) as AppNavigation | null;
-        const widgetIdsRaw = req.body?.widgetIds;
+        const analyzeId = req.body?.analyzeId as string;
+        const journeyId = req.body?.journeyId as string;
+        
+        const analyze = appCache.getAnalyze(analyzeId);
 
-
-        if (!journey || !Array.isArray(journey.steps)) {
-            return badRequest(res, "Body.journey is required and must include a 'steps' array.");
+        if (analyze === undefined) {
+            return res.status(404).json({ success: false, error: "Analyze does not exist or analyze expired" });
         }
 
-        const widgetIds = Array.isArray(widgetIdsRaw) ? widgetIdsRaw.filter((s: any) => typeof s === 'string') : undefined;
+        const graph = analyze.graph;
+        const journeyMapValue = analyze.journeys.get(journeyId);
 
-        logger.info(
-            "[POST /actions/infer] journey=%s steps=%d graphNodes=%d catalog=%d",
-            journey.id ?? "<no-id>",
-            journey.steps.length,
-            Array.isArray(graph?.nodes) ? graph!.nodes.length : 0,
-            widgetIds?.length ?? 0
+        if (journeyMapValue === undefined) {
+            return res.status(404).json({ success: false, error: "Journey '" + journeyId + "' does not exist", journeys: analyze.journeys, graph });
+        }
+
+        const stageActions = journeyMapValue.stageActions;
+
+        logger.info('[CACHE] Getting stage-actions for user-journey "%s" from cache for "%s""',
+            journeyId,
+            analyzeId
         );
 
-        const actions = inferActions(journey, graph, { widgetIds });
+        if (journeyMapValue.stageActions.length) {
+            return res.status(200).json({ success: true, stageActions });
+        }
+        else {
 
-        res.setHeader("Cache-Control", "no-store");
-        res.setHeader("X-StageActions-Count", String(actions.length));
-        res.setHeader("X-WidgetCatalog-Count", String(widgetIds?.length ?? 0));
-        res.setHeader("X-Analyzer-DurationMs", (performance.now() - started).toFixed(1));
+            const journey = journeyMapValue.journey;
 
-        return res.status(200).json({ success: true, actions });
+            const widgetIdsRaw = req.body?.widgetIds;
+
+
+            if (!journey || !Array.isArray(journey.steps)) {
+                return badRequest(res, "Body.journey is required and must include a 'steps' array.");
+            }
+
+            const widgetIds = Array.isArray(widgetIdsRaw) ? widgetIdsRaw.filter((s: any) => typeof s === 'string') : undefined;
+
+            logger.info(
+                "[POST /actions/infer] journey=%s steps=%d graphNodes=%d catalog=%d",
+                journey.id ?? "<no-id>",
+                journey.steps.length,
+                Array.isArray(graph?.nodes) ? graph!.nodes.length : 0,
+                widgetIds?.length ?? 0
+            );
+
+            const actions = inferActions(journey, graph, { widgetIds });
+
+            res.setHeader("Cache-Control", "no-store");
+            res.setHeader("X-StageActions-Count", String(actions.length));
+            res.setHeader("X-WidgetCatalog-Count", String(widgetIds?.length ?? 0));
+            res.setHeader("X-Analyzer-DurationMs", (performance.now() - started).toFixed(1));
+
+            appCache.setStageActions(analyzeId, journeyId, actions);
+
+            return res.status(200).json({ success: true, actions });
+          
+        }
     } catch (err: any) {
         logger.error("[POST /actions/infer] Error: %o", err);
         return res.status(500).json({ success: false, error: err?.message || "Failed to infer StageActions" });
-    }
+    } 
 });
 
 export default router;

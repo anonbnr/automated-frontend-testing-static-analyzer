@@ -16,7 +16,7 @@ import { FanoutMode } from "../builders/user-journeys/user-journey-processors.js
 import { UserJourneyRegistryBuilder } from "../builders/user-journeys/user-journey-registry-builder.js";
 import { UserJourneyRegistry } from "../models/user-journeys/user-journey-info.js";
 import { StaticAnalyzer } from "./static-analyzer.js";
-import { getAnalyze, getNavigationGraph, setNavigationGraph, setUserJourney } from "../adapters/appCache.js";
+import * as appCache from "../adapters/appCache.js";
 import logger from "../logging/logger.js";
 
 export interface ExtractOptions {
@@ -48,7 +48,7 @@ export class UserJourneyExtractor {
         const { fanoutMode = "primary" } = options;
 
         // 1) build the navigation multigraph via static analysis
-        const analyze = getAnalyze(projectRoot);
+        const analyze = appCache.getAnalyze(projectRoot);
 
         let registry = undefined;
         const journeys = analyze?.journeys;
@@ -70,7 +70,7 @@ export class UserJourneyExtractor {
             if (navGraph === undefined || compRouteMap === undefined) {
                 navGraph = await this.staticAnalyzer.analyze();
                 compRouteMap = this.staticAnalyzer.compRouteMap;
-                setNavigationGraph(projectRoot, navGraph, compRouteMap);
+                appCache.setNavigationGraph(projectRoot, navGraph, compRouteMap);
                 logger.info('[POST /user-journeys] Setting navigation graph into cache for "%s", routeMap = "%s"',
                     projectRoot,
                     this.staticAnalyzer.compRouteMap
@@ -82,20 +82,21 @@ export class UserJourneyExtractor {
                     this.staticAnalyzer.compRouteMap
                 );
             }
-            
+
             registry = new UserJourneyRegistryBuilder(
                 compRouteMap,
                 navGraph,
                 fanoutMode
             ).build();
-            
+
             for (const journey of registry.getAll()) {
-                setUserJourney(journey.id, journey);
+                appCache.setUserJourney(projectRoot, journey);
+                logger.info('[POST /user-journeys] Setting user-journey "%s" into cache for "%s"',
+                    journey.id,
+                    projectRoot
+                );
             }
 
-            logger.info('[POST /user-journeys] Setting user-journeys into cache for "%s"',
-                projectRoot
-            );
         }
         
         // 2) assemble + process user journeys

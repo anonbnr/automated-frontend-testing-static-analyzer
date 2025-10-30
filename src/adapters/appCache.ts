@@ -4,12 +4,14 @@ import { Scenario } from "../models/scenarios/scenarios-info.js";
 import { env } from '../api/env.js';
 import logger from "../logging/logger.js";
 import { ComponentRouteMap } from "../models/route-info.js";
+import { StageAction } from "../models/scenarios/stage-action.js";
 
 
 type ScenarioMap = Map<string, Scenario>;
 
 type JourneyMapValue = {
     journey: UserJourney,
+    stageActions: StageAction[],
     scenarios: ScenarioMap
 }
 
@@ -25,8 +27,9 @@ const analyzes = new Map<string, analyzeMapValue>();
 
 export function getAnalyze(analyzeId: string) {
     const analyze = analyzes.get(analyzeId);
-    
+
     if (analyze && analyze.expiresAt < Date.now()) {
+        logger.info('analyze "%s" expired, deleting analyze', analyzeId);
         analyzes.delete(analyzeId);
         return undefined;
     }
@@ -57,7 +60,7 @@ export function setNavigationGraph(analyzeId: string, graph: AppNavigation, comp
     };
     updateExpiration(analyzeValue);
     analyzes.set(analyzeId, analyzeValue);
-    
+
     logger.info('[CACHE] Setting navigation graph into cache for "%s""',
         analyzeId
     );
@@ -66,35 +69,33 @@ export function setNavigationGraph(analyzeId: string, graph: AppNavigation, comp
 }
 
 
-// export function hasNavigationGraph(analyzeId: string) {
-//     return analyzes.has(analyzeId);
-// }
-
 // UserJourney ACCESSORS
 
-export function getUserJourney(analyzeId: string, UserJourneyId: string) {
-    logger.info('[CACHE] Setting user-journey "%s" into cache for "%s""',
-        UserJourneyId,
+export function getUserJourney(analyzeId: string, userJourneyId: string) {
+    logger.info('[CACHE] Getting user-journey "%s" from cache for "%s""',
+        userJourneyId,
         analyzeId
     );
-    return getAnalyze(analyzeId)?.journeys.get(UserJourneyId)?.journey;
+    return getAnalyze(analyzeId)?.journeys.get(userJourneyId)?.journey;
 }
 
-export function setUserJourney(analyzeId: string, UserJourney: UserJourney) { 
+export function setUserJourney(analyzeId: string, UserJourney: UserJourney) {
     const analyze = analyzes.get(analyzeId);
 
     if (analyze === undefined) {
+        logger.info('[CACHE] setUserJourney failed: analyze "%s" does not exist', analyzeId);
         return false;
     }
 
     const journeyMapValue = {
         journey: UserJourney,
-        scenarios: new Map<string, Scenario>,
+        stageActions: [],
+        scenarios: new Map<string, Scenario>(),
     }
 
     updateExpiration(analyze);
     analyze.journeys.set(UserJourney.id, journeyMapValue);
-    
+
     logger.info('[CACHE] Setting user-journey "%s" from cache for "%s""',
         UserJourney.id,
         analyzeId
@@ -102,54 +103,68 @@ export function setUserJourney(analyzeId: string, UserJourney: UserJourney) {
     return true;
 }
 
-// export function hasUserJourney(analyzeId: string, UserJourneyId: string) {
-//     const analyze = analyzes.get(analyzeId);
-
-//     if (!analyze) {
-//         return false;
-//     }
-
-//     return (analyze.journeys.has(UserJourneyId));
-// }
-
 
 // Scenario ACCESSORS
 
-export function getScenario(analyzeId: string, UserJourneyId: string, scenarioId: string) { 
-    return getAnalyze(analyzeId)?.journeys.get(UserJourneyId)?.scenarios.get(scenarioId);
+export function getScenario(analyzeId: string, userJourneyId: string, scenarioId: string) {
+    return getAnalyze(analyzeId)?.journeys.get(userJourneyId)?.scenarios.get(scenarioId);
 }
 
-export function setScenario(analyzeId: string, UserJourneyId: string, scenario: Scenario) {
+export function setScenario(analyzeId: string, userJourneyId: string, scenario: Scenario) {
     const analyze = analyzes.get(analyzeId);
 
     if (analyze === undefined) {
+        logger.info('[CACHE] setScenario failed: analyze "%s" does not exist', analyzeId);
         return false;
     }
 
-    const journey = analyze.journeys.get(UserJourneyId);
+    const journey = analyze.journeys.get(userJourneyId);
 
     if (journey === undefined) {
+        logger.info('[CACHE] setScenario: user-journey "%s" does not exist', userJourneyId);
         return false;
     }
 
     updateExpiration(analyze);
     journey.scenarios.set(scenario.id, scenario);
-    
+
     return true;
 }
 
-// export function hasScenario(analyzeId: string, UserJourneyId: string, scenarioId: string) {
-//     const analyze = analyzes.get(analyzeId);
 
-//     if (!analyze) {
-//         return false;
-//     }
+// StageActions ACCESSORS
 
-//     const journey = analyze.journeys.get(UserJourneyId);
+export function getStageActions(analyzeId: string, userJourneyId: string) {
+    logger.info('[CACHE] Getting stage-actions for user-journey "%s" from cache for "%s""',
+        userJourneyId,
+        analyzeId
+    );
+    return getAnalyze(analyzeId)?.journeys.get(userJourneyId)?.stageActions;
+}
 
-//     if (!journey) {
-//         return false;
-//     }
+export function setStageActions(analyzeId: string, userJourneyId: string, stageActions: StageAction[]) {
+    const analyze = analyzes.get(analyzeId);
 
-//     return journey.scenarios.has(scenarioId);
-// }
+    if (analyze === undefined) {
+        logger.info('[CACHE] setStageActions failed: analyze "%s" does not exist', analyzeId);
+        return false;
+    }
+
+    const journey = analyze.journeys.get(userJourneyId);
+
+    if (journey === undefined) {
+        logger.info('[CACHE] setStageActions failed: user-journey "%s" does not exist', userJourneyId);
+        return false;
+    }
+
+    journey.stageActions = stageActions;
+
+    updateExpiration(analyze);
+    
+    logger.info('[CACHE] Setting stage-actions from cache for user-journey "%s" into for "%s""',
+        userJourneyId,
+        analyzeId
+    );
+
+    return true;
+}

@@ -11,6 +11,6 @@ export interface Scenario {
 
     stageActions: StageAction[];
 
-    success: boolean;
+    shouldTriggerError: boolean;
 }
 

@@ -1,0 +1,19 @@
+services:
+  mariadb_automated-frontend-testing:
+    image: mariadb:11.8.2
+    container_name: automated-testing-db
+    env_file:
+      - .env
+    ports:
+      - ${DBPORT}:${DBPORT}
+    environment:
+      - DBPORT=${DBPORT}
+      - MYSQL_ROOT_PASSWORD=${DBPASS}
+      - MYSQL_USER=${DBUSER}
+      - MYSQL_PASSWORD=${DBPASS}
+      - MYSQL_DATABASE=${DBNAME}
+    volumes:
+      - ./data/db:/var/lib/mysql
+      - ./config-db/init_user.sql:/docker-entrypoint-initdb.d/init_user.sql
+      - ./config-db/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    restart: always

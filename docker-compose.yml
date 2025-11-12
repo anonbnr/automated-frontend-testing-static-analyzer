@@ -5,7 +5,7 @@ services:
     env_file:
       - .env
     ports:
-      - ${DBPORT}:${DBPORT}
+      - ${DBPORT}:3306
     environment:
       - DBPORT=${DBPORT}
       - MYSQL_ROOT_PASSWORD=${DBPASS}

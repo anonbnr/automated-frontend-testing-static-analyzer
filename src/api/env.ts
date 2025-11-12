@@ -169,6 +169,16 @@ export const env = {
         }
     },
 
+    db: {
+        config: {
+            HOST: envStr('DBHOST', 'localhost'),
+            PORT: envNum('DBPORT', 3306),
+            USER: envStr('DBUSER', 'user'),
+            PASSWORD: envStr('DBPASS', '0000'),
+            DB: envStr('DBNAME', 'testing'),
+        }
+    },
+
     // ── Express body-parser JSON limit ─────────────────────────────────────
     API_JSON_LIMIT: envStr('API_JSON_LIMIT', '10mb'),
 };

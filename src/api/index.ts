@@ -2,6 +2,7 @@
 // api/index.ts
 //
 // Static Analyzer API bootstrap:
+//   • Setup the database connexion to the central app storage
 //   • Creates an Express application
 //   • Applies shared middleware (CORS, JSON parsing)
 //   • Registers all feature routers in one place
@@ -14,19 +15,11 @@ import express, { Express, Request, Response } from 'express';
 import logger from '../logging/logger.js';
 import { env } from './env.js';
 import { corsMiddleware, errorHandler, jsonBodyParser } from './middleware.js';
-import actionsRouter from './routes/actions.js';
-import logicRouter from './routes/business-logic.js';
-import capabilitiesRouter from './routes/capabilities.js';
-import componentsRouter from './routes/components.js';
-import graphRouter from './routes/graph.js';
-import llmRouter from './routes/llm.js';
-import modulesRouter from './routes/modules.js';
-import routesRouter from './routes/routes.js';
-import screenshotsRouter from './routes/screenshots.js';
-import templateRouter from './routes/template.js';
-import userJourneyRouter from './routes/user-journeys.js';
-import widgetIdsRouter from './routes/widget-ids.js';
-import widgetsRouter from './routes/widgets.js';
+
+
+import { Router } from 'express';
+import fs from 'fs';
+import path from 'path';
 
 const app: Express = express();
 
@@ -50,23 +43,12 @@ app.get("/healthz", (_req: Request, res: Response) => {
  * Centralized router registration keeps the bootstrap concise
  * and provides a one-glance overview of available endpoints.
  */
-const ROUTES: Array<[path: string, router: any]> = [
-    ["/modules", modulesRouter],
-    ["/components", componentsRouter],
-    ["/routes", routesRouter],
-    ["/template", templateRouter],
-    ["/widgets", widgetsRouter],
-    ["/widget-ids", widgetIdsRouter],
-    ["/business-logic", logicRouter],
-    ["/graph", graphRouter],
-    ["/user-journeys", userJourneyRouter],
-    ["/screenshots", screenshotsRouter],
-    ["/actions", actionsRouter],
-    ["/capabilities", capabilitiesRouter],
-    ["/llm", llmRouter],
-];
 
-for (const [path, router] of ROUTES) app.use(path, router);
+
+const router = Router();
+await loadAndBuildRoutes(path.join(import.meta.dirname, "routes"), router);
+app.use(router);
+
 
 // ── ERROR HANDLING ────────────────────────────────────────────────────────────
 // Should be registered after all route handlers.
@@ -86,3 +68,40 @@ app.listen(env.PORT, () => {
         env.llm.provider
     );
 });
+
+
+
+
+
+
+
+
+
+
+/** 
+* Browse the routes directory and automatically call the building route function.
+* It's avoid explicit import and addition of each declared routes.
+*/
+async function loadAndBuildRoutes(dir: string, router: Router) {
+	
+    const files = fs.readdirSync(dir);
+    const exludedDir = [
+        "helpers",
+        "schemas"
+    ]
+
+    for (const file of files) {
+        const filePath = path.join(dir, file);
+        const fileStat = fs.statSync(filePath);
+
+        if (exludedDir.includes(file))
+            continue;
+
+        if (fileStat.isDirectory())
+            await loadAndBuildRoutes(filePath, router);
+        else {
+            const mod = await import(filePath);
+            mod.default(router);
+        }
+    }
+}

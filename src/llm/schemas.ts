@@ -16,7 +16,7 @@
 //  • Request must include at least one of {graph, routeMap} to anchor reasoning.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GRAPH VALIDATION (matches models/navigation-graph.ts)

@@ -105,6 +105,7 @@ router.post('/', async (req: Request, res: Response) => {
 		
 		// Check cache to avoid redundant analysis
 		let graph = getNavigationGraph(projectRoot);
+		
 		if (!graph) {
 			graph = await analyzer.analyze();
 			setNavigationGraph(projectRoot, graph, analyzer.compRouteMap);

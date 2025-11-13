@@ -19,6 +19,9 @@
 //   • `role` values are intended to be mutually exclusive in this model.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { RowDataPacket } from "mysql2/promise";
+import { ModifierTexts } from "ts-morph";
+
 /**
  * Classification of an NgModule's role in the application graph.
  *
@@ -84,6 +87,16 @@ export interface ModuleInfo {
     * The high-level role this module plays for navigation/structure analysis.
     * See {@link ModuleRole} for semantics.
     */
+    role: ModuleRole;
+}
+
+export interface RowModuleInfo extends RowDataPacket {
+    name: string,
+    filePath: string;
+    imports: string,
+    declaration: string,
+    exports: string,
+    lazy: boolean,
     role: ModuleRole;
 }
 

@@ -20,6 +20,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { WidgetInfo } from "./widget-info.js";
+import { RowDataPacket } from "mysql2/promise";
 
 /**
  * Static metadata about an Angular component.
@@ -60,6 +61,12 @@ export interface ComponentInfo {
     * not their full metadata objects.
     */
     nestedComponents: string[];
+}
+
+export interface RowComponentInfo extends RowDataPacket {
+    selector: string;
+    name: string;
+    nestedComponents: string;
 }
 
 /**

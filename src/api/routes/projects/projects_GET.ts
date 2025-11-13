@@ -1,18 +1,18 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectRegistry from '../../../adapters/registries/projectRegistry.js';
+import * as projectStorage from '../../../adapters/storage/projectStorage.js';
 
 export default function buildRoute(router: Router) {
 
-    router.get('/projects', async (req: Request, res: Response) => {
+    router.get('/projects', async (req: Request, resp: Response) => {
 
         try {
-            const results = await projectRegistry.getAll();
-            return res.json({ results });
+            const results = await projectStorage.getAll();
+            return resp.json(results);
 
         } catch (err: any) {
             logger.error("[GET /projects] Fatal error: %o", err);
-            return res
+            return resp
                 .status(500)
                 .json({ error: err.message || 'Failed to get projects' });
         }

@@ -30,6 +30,7 @@
  *   [module, route, interaction(via routerLink|href|static-redirect), route]
  */
 
+import { RowDataPacket } from "mysql2";
 import logger from "../../logging/logger.js";
 import { NavEventType, UserEventType } from "../event-info.js";
 import { GraphRelationType } from "../navigation-graph.js";
@@ -111,6 +112,17 @@ export interface UserJourney {
     intent?: string;
 
     /** True iff the user journey does not end on '/virtual/error'. */
+    success?: boolean;
+}
+
+export interface RowUserJourney extends RowDataPacket {
+    id: string;
+    rootModule: string;
+    name?: string;
+    projectRoot?: string;
+    steps: UserJourneyStep[];
+    path?: PrunedPath;
+    intent?: string;
     success?: boolean;
 }
 

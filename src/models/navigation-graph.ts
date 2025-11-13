@@ -24,6 +24,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { NavEventType, UserEventType } from "./event-info.js";
+import { RowDataPacket } from "mysql2/promise";
 
 /**
  * Semantic roles that a graph node can play.
@@ -161,4 +162,10 @@ export interface AppNavigation {
 
     /** All dynamic transitions (user events, router links, redirects, lazy loads, etc.). */
     transitions: GraphTransition[];
+}
+
+export interface RowAppNavigation extends RowDataPacket{
+    nodes: string,
+    edges: string,
+    transitions: string
 }

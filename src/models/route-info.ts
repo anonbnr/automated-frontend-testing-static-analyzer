@@ -21,6 +21,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { ComponentInfo } from "./component-info.js";
+import { RowDataPacket } from "mysql2/promise";
 
 /**
  * Base information common to both component and redirect routes.
@@ -106,8 +107,28 @@ export interface ComponentRoute extends Route {
 export interface RedirectRoute extends Route {
     /** The target path to which this route redirects (Angular path segment). */
     redirectTo: string;
-
+    
     /** `pathMatch` strategy for the redirect. Defaults to `"prefix"` in Angular. */
+    pathMatch?: "full" | "prefix";
+}
+
+export interface RowComponentRoute extends RowDataPacket {
+    route: string;
+    module?: string;
+    component?: string;
+    loadChildren?: string;
+    loadComponent?: string;
+    pathMatch?: "full" | "prefix";
+    canActivate?: string;
+    canActivateChild?: string;
+    canLoad?: string;
+    resolve?: string;
+    data?: string;
+}
+export interface RowRedirectRoute extends RowDataPacket {
+    route: string;
+    module?: string;
+    redirectTo: string;
     pathMatch?: "full" | "prefix";
 }
 
@@ -158,4 +179,20 @@ export interface ComponentRouteMap {
     * - dead:   never present under any route
     */
     roles: Record<ComponentRouteRole, ComponentInfo[]>;
+}
+
+export interface rowRouteRoles extends RowDataPacket {
+    root: string,
+    global: string,
+    shared: string,
+    mapped: string,
+    dead: string,
+}
+
+export interface RouteRoles {
+    root: string[],
+    global: string[],
+    shared: string[],
+    mapped: string[],
+    dead: string[],
 }

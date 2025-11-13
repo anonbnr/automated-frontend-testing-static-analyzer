@@ -22,6 +22,7 @@
 
 import { TmplAstNode } from "@angular/compiler";
 import { NavEventType, UserEventType } from "./event-info.js";
+import { RowDataPacket } from "mysql2/promise";
 
 /**
  * Static metadata for a UI widget discovered in an Angular template.
@@ -88,12 +89,26 @@ export interface WidgetInfo {
     */
     children?: WidgetInfo[];
 
+    parentId?: string;
+
     /**
     * The original Angular compiler AST node (`TmplAstElement`, `TmplAstTemplate`, etc.)
     * from which this widget was derived. Retained for deep analyses requiring
     * source spans, directive metadata, or structural context.
     */
     originalNode?: TmplAstNode,
+}
+
+export interface RowWidgetInfo extends RowDataPacket {
+    id: string;
+    type: string;
+    events: string;
+    attributes?: string;
+    validationRules?: string;
+    triggersFormSubmission?: boolean;
+    children?: WidgetInfo[];
+    
+    parentId: string;
 }
 
 /**

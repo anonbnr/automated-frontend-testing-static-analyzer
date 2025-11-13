@@ -46,6 +46,7 @@ CREATE TABLE components (
     inserted_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (selector, projectId),
+    INDEX idx_component_name (name),
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -71,7 +72,7 @@ CREATE TABLE component_routes (
     PRIMARY KEY (route, projectId),
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (module) REFERENCES modules(name) ON DELETE SET NULL,
-    FOREIGN KEY (component) REFERENCES components(selector) ON DELETE CASCADE
+    FOREIGN KEY (component) REFERENCES components(name) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- =====================================================================
@@ -89,6 +90,23 @@ CREATE TABLE redirect_routes (
     PRIMARY KEY (route, projectId),
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (module) REFERENCES modules(name) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- =====================================================================
+--  ROUTE_ROLES
+-- =====================================================================
+
+CREATE TABLE route_roles (
+    projectId       UUID    NOT NULL,
+    root            JSON    NOT NULL,
+    global          JSON    NOT NULL,
+    shared          JSON    NOT NULL,
+    mapped          JSON    NOT NULL,
+    dead            JSON    NOT NULL,
+    inserted_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (projectId),
+    FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- =====================================================================

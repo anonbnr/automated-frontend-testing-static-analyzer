@@ -11,7 +11,9 @@ import * as widgetStorage from '../../../adapters/storage/widgetStorage.js';
 import * as componentRouteStorage from '../../../adapters/storage/componentRouteStorage.js';
 import * as redirectRouteStorage from '../../../adapters/storage/redirectRouteStorage.js';
 import * as routeRoleStorage from '../../../adapters/storage/routeRoleStorage.js';
+import * as userJourneyStorage from '../../../adapters/storage/userJourneyStorage.js';
 import { AnalysisProject } from '../../../models/project-info.js';
+import { UserJourneyRegistryBuilder } from '../../../builders/user-journeys/user-journey-registry-builder.js';
 
 
 export default function buildRoute(router: Router) {
@@ -19,7 +21,8 @@ export default function buildRoute(router: Router) {
     router.post('/projects/:projectId/analysis', async (req: Request, resp: Response) => {
 
         const projectId = req.params.projectId;
-        
+        const fanoutMode = req.body.fanoutMode ?? "primary"
+
         const project = await projectStorage.getById(projectId);
         
         if (project === undefined) {
@@ -54,6 +57,11 @@ export default function buildRoute(router: Router) {
                 mapped: compRouteMap.roles.mapped.map(c => c.selector),
                 dead: compRouteMap.roles.dead.map(c => c.selector)
             }
+            const userJourneys = new UserJourneyRegistryBuilder(
+                compRouteMap,
+                graph,
+                fanoutMode
+            ).build().getAll();
 
             for (const module of modules) {
                 await moduleStorage.save(projectId, module);
@@ -83,6 +91,10 @@ export default function buildRoute(router: Router) {
             await routeRoleStorage.save(projectId, roles)
 
             graphStorage.save(projectId, graph);
+
+            for (const userJourney of userJourneys) {
+                await userJourneyStorage.save(projectId, userJourney);
+            }
 
             return resp.status(204).json();
         } catch (err: any) {

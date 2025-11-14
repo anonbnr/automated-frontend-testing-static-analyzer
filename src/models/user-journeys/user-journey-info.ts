@@ -120,8 +120,8 @@ export interface RowUserJourney extends RowDataPacket {
     rootModule: string;
     name?: string;
     projectRoot?: string;
-    steps: UserJourneyStep[];
-    path?: PrunedPath;
+    steps: string; // serialized
+    path?: string; // serialized
     intent?: string;
     success?: boolean;
 }

@@ -22,6 +22,7 @@ import fs from 'fs';
 import path from 'path';
 
 
+
 const app: Express = express();
 
 // ── GLOBAL MIDDLEWARE ─────────────────────────────────────────────────────────
@@ -73,10 +74,6 @@ app.listen(env.PORT, () => {
 
 
 
-
-
-
-
 /** 
 * Browse the routes directory and automatically call the building route function.
 * It's avoid explicit import and addition of each declared routes.
@@ -87,7 +84,8 @@ async function loadAndBuildRoutes(dir: string, router: Router) {
     const exludedDir = [
         "helpers",
         "schemas",
-        "utils"
+        "utils",
+        "graph"
     ]
 
     for (const file of files) {

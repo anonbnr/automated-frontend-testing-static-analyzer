@@ -17,10 +17,10 @@ export default function buildRoute(router: Router) {
 
         try {
             const results = await projectStorage.save(name, description, projectRoot, url);
-            if (results === false)
-                return resp.status(500).json({ error: 'Failed to post project' });    
+            if (results === undefined)
+                return resp.status(500).json({ error: 'Failed to post project' });
             
-            return resp.status(204).send();
+            return resp.status(200).json({id: results});
 
         } catch (err: any) {
             logger.error("[POST /projects] Fatal error: %o", err);

@@ -29,7 +29,7 @@ export async function save(projectId : string, module : ModuleInfo) {
         );
         return true;
     } catch(e) {
-        logger.error("Error: AnalysisProject.registry.save: ", e);
+        logger.error("Error: moduleStorage.save: ", e);
         return false;
     } finally {
         if (dbConnection)
@@ -66,7 +66,7 @@ export async function getAll(projectId: string): Promise<ModuleInfo[]> {
         }
         return modules;
     } catch(e) {
-        console.log("Error: AnalysisProject.registry.getAll: ", e);
+        console.log("Error: moduleStorage.getAll: ", e);
         throw e;
     } finally {
         if (dbConnection)

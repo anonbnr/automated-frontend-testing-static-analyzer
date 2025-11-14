@@ -151,12 +151,17 @@ CREATE TABLE graphs (
 -- =====================================================================
 
 CREATE TABLE userjourneys (
-    id              VARCHAR(512)   NOT NULL,
-    projectId       UUID           NOT NULL,
-    rootModule      VARCHAR(128)   NOT NULL,
-    userJourneySteps JSON          NOT NULL,
-    inserted_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id               VARCHAR(512)   NOT NULL,
+    projectId        UUID           NOT NULL,
+    rootModule       VARCHAR(128)   NOT NULL,
+    steps            JSON           NOT NULL,
+    name             VARCHAR(128),
+    projectRoot      VARCHAR(1024),
+    path             JSON,
+    intent           VARCHAR(128),
+    success          BOOLEAN,
+    inserted_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id, projectId),
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

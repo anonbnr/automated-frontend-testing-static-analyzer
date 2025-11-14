@@ -14,7 +14,7 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json({ error: "project not found" });
             }
             
-            return resp.json({ results });
+            return resp.json(results);
 
         } catch (err: any) {
             logger.error("[GET /project/:projectId] Fatal error: %o", err);

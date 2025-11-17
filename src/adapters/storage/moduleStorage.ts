@@ -5,14 +5,13 @@ import dbPool from "../../db/connection.js";
 import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 import { ModuleInfo, RowModuleInfo } from '../../models/module-info.js';
+import { StorageSession } from '../storageManager.js';
 
 
-export async function save(projectId : string, module : ModuleInfo) {
-    let dbConnection: PoolConnection | undefined;
+export async function save(projectId: string, module: ModuleInfo, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [result] = await dbConnection.query<ResultSetHeader>(
             `INSERT INTO modules (name, projectId, filePath, imports, declarations, exports, lazy, role)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -28,22 +27,17 @@ export async function save(projectId : string, module : ModuleInfo) {
             ]
         );
         return true;
-    } catch(e) {
+    } catch (e) {
         logger.error("Error: moduleStorage.save: ", e);
         return false;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
 
-export async function getAll(projectId: string): Promise<ModuleInfo[]> {
-    let dbConnection: PoolConnection | undefined;
+export async function getAll(projectId: string, storageSession: StorageSession): Promise<ModuleInfo[]> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [results] = await dbConnection.query<RowModuleInfo[]>(
             `SELECT name, filePath, imports, declarations, exports, lazy, role FROM modules WHERE projectId=?`,
             [projectId]
@@ -51,7 +45,7 @@ export async function getAll(projectId: string): Promise<ModuleInfo[]> {
 
         const modules: ModuleInfo[] = [];
         let module: ModuleInfo;
-        
+
         for (const result of results) {
             module = {
                 name: result.name,
@@ -65,26 +59,23 @@ export async function getAll(projectId: string): Promise<ModuleInfo[]> {
             modules.push(module)
         }
         return modules;
-    } catch(e) {
+    } catch (e) {
         console.log("Error: moduleStorage.getAll: ", e);
         throw e;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
-// CREATE TABLE modules (
-//     name            VARCHAR(128)    NOT NULL,
-//     projectId       UUID            NOT NULL,
-//     filePath        VARCHAR(1024)   NOT NULL,
-//     imports         JSON            NOT NULL,
-//     declarations    JSON            NOT NULL,
-//     exports         JSON            NOT NULL,
-//     lazy            BOOLEAN         NOT NULL,
-//     role            VARCHAR(32)     NOT NULL,
-//     inserted_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-//     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-//     PRIMARY KEY (name, projectId),
-//     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
-// ) ENGINE=InnoDB;
+export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [result] = await dbConnection.query<ResultSetHeader>(
+            `DELETE FROM modules WHERE projectId=?`,
+            [projectId]
+        );
+        return true;
+    } catch (e) {
+        console.log("Error: moduleStorage.getByProjectId: ", e);
+        return false;
+    }
+}

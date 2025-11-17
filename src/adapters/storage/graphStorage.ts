@@ -6,13 +6,12 @@ import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 import { AppNavigation } from '../../llm/schemas.js';
 import { RowAppNavigation } from '../../models/navigation-graph.js';
+import { StorageSession } from '../storageManager.js';
 
-export async function save(projectId : string, graph : AppNavigation) {
-    let dbConnection: PoolConnection | undefined;
+export async function save(projectId: string, graph: AppNavigation, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [result] = await dbConnection.query<ResultSetHeader>(
             `INSERT INTO graphs (projectId, nodes, edges, transitions)
                 VALUES (?, ?, ?, ?)`,
@@ -24,31 +23,26 @@ export async function save(projectId : string, graph : AppNavigation) {
             ]
         );
         return true;
-    } catch(e) {
+    } catch (e) {
         logger.error("Error: AnalysisProject.registry.save: ", e);
         return false;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
-export async function getAll(projectId: string): Promise<AppNavigation[]> {
-    let dbConnection: PoolConnection | undefined;
+export async function getAll(projectId: string, storageSession: StorageSession): Promise<AppNavigation[]> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [results] = await dbConnection.query<RowAppNavigation[]>(
             `SELECT nodes, edges, transitions FROM graphs
              WHERE projectId=?`,
             [projectId]
-            
+
         );
 
         const graphs: AppNavigation[] = [];
         let graph: AppNavigation;
-        
+
         for (const result of results) {
             graph = {
                 nodes: JSON.parse(result.nodes),
@@ -60,11 +54,23 @@ export async function getAll(projectId: string): Promise<AppNavigation[]> {
 
         return graphs;
 
-    } catch(e) {
+    } catch (e) {
         console.log("Error: componentRouteStorage.getAll: ", e);
         throw e;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
+    }
+}
+
+export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [result] = await dbConnection.query<ResultSetHeader>(
+            `DELETE FROM graphs WHERE projectId=?`,
+            [projectId]
+        );
+        return true;
+    } catch (e) {
+        console.log("Error: graphStorage.getByProjectId: ", e);
+        return false;
     }
 }

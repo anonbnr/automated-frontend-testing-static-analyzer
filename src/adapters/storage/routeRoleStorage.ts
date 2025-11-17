@@ -9,13 +9,12 @@ import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 import { ComponentInfo, RowComponentInfo } from '../../models/component-info.js';
 import { ComponentRouteRole, rowRouteRoles, RouteRoles } from '../../models/route-info.js';
+import { StorageSession } from '../storageManager.js';
 
-export async function save(projectId : string, roles: Record<ComponentRouteRole, string[]>) {
-    let dbConnection: PoolConnection | undefined;
+export async function save(projectId : string, roles: Record<ComponentRouteRole, string[]>, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [result] = await dbConnection.query<ResultSetHeader>(
             `INSERT INTO route_roles (projectId, root, global, shared, mapped, dead)
                 VALUES (?, ?, ?, ?, ?, ?)`,
@@ -32,23 +31,20 @@ export async function save(projectId : string, roles: Record<ComponentRouteRole,
     } catch(e) {
         logger.error("Error: routeRoleSotage.save: ", e);
         return false;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
-export async function get(projectId: string): Promise<RouteRoles> {
-    let dbConnection: PoolConnection | undefined;
+export async function get(projectId: string, storageSession: StorageSession): Promise<RouteRoles> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [results] = await dbConnection.query<rowRouteRoles[]>(
             `SELECT root, global, shared, mapped, dead FROM route_roles WHERE projectId = ?`,
             [projectId]
         );
-        
+        if (results.length === 0) {
+            throw new Error("Error: routeRoleStorage.get: no ");
+        }
         const routeRoles: RouteRoles = {
             root: JSON.parse(results[0].root),
             global: JSON.parse(results[0].global),
@@ -60,8 +56,20 @@ export async function get(projectId: string): Promise<RouteRoles> {
     } catch(e) {
         console.log("Error: routeRoleSotage.getAll: ", e);
         throw e;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
+    }
+}
+
+export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [result] = await dbConnection.query<ResultSetHeader>(
+            `DELETE FROM route_roles WHERE projectId=?`,
+            [projectId]
+        );
+        return true;
+    } catch(e) {
+        console.log("Error: routeRoleStorage.getByProjectId: ", e);
+        return false;
     }
 }

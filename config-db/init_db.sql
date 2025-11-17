@@ -11,6 +11,7 @@ CREATE TABLE projects (
     projectRoot     VARCHAR(1024)   NOT NULL,
     description     TEXT,
     url             VARCHAR(1024),
+    scannedAt       DATETIME        DEFAULT NULL,
     inserted_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -115,7 +116,7 @@ CREATE TABLE route_roles (
 
 CREATE TABLE widgets (
     id                      VARCHAR(512)    NOT NULL,
-    componentSelector        VARCHAR(128),
+    componentSelector        VARCHAR(128)   NOT NULL,
     parentId                 VARCHAR(512),
     projectId                UUID           NOT NULL,
     type                    VARCHAR(128)    NOT NULL,
@@ -127,7 +128,7 @@ CREATE TABLE widgets (
     updated_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id, projectId),
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (componentSelector) REFERENCES components(selector) ON DELETE SET NULL,
+    FOREIGN KEY (componentSelector) REFERENCES components(selector) ON DELETE CASCADE,
     FOREIGN KEY (parentId) REFERENCES widgets(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 

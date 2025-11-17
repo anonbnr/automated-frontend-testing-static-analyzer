@@ -9,13 +9,12 @@ import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 import { ComponentRoute, RowComponentRoute } from '../../models/route-info.js';
 import { union } from 'zod';
+import { StorageSession } from '../storageManager.js';
 
-export async function save(projectId : string, componentRoute : ComponentRoute) {
-    let dbConnection: PoolConnection | undefined;
+export async function save(projectId : string, componentRoute : ComponentRoute, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [result] = await dbConnection.query<ResultSetHeader>(
             `INSERT INTO component_routes (projectId, route, module, component, loadChildren, loadComponent, pathMatch, canActivate, canActivateChild, canLoad, resolve, data)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -38,23 +37,17 @@ export async function save(projectId : string, componentRoute : ComponentRoute) 
     } catch(e) {
         logger.error("Error: componentRouteStorage.save: ", e);
         return false;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
-export async function getAll(projectId: string): Promise<ComponentRoute[]> {
-    let dbConnection: PoolConnection | undefined;
+export async function getAll(projectId: string, storageSession: StorageSession): Promise<ComponentRoute[]> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [results] = await dbConnection.query<RowComponentRoute[]>(
             `SELECT route, module, component, loadChildren, loadComponent, pathMatch, canActivate, canActivateChild, canLoad, resolve, data FROM component_routes
              WHERE projectId=?`,
             [projectId]
-            
         );
 
         const componentRoutes: ComponentRoute[] = [];
@@ -82,30 +75,5 @@ export async function getAll(projectId: string): Promise<ComponentRoute[]> {
     } catch(e) {
         console.log("Error: componentRouteStorage.getAll: ", e);
         throw e;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
-
-
-// CREATE TABLE component_routes (
-//     route               VARCHAR(512)   NOT NULL,
-//     projectId           UUID           NOT NULL,
-//     module              VARCHAR(128)   DEFAULT NULL,
-//     component           VARCHAR(128)   NOT NULL,
-//     loadChildren        VARCHAR(3000),
-//     loadComponent       VARCHAR(3000),
-//     pathMatch           VARCHAR(32),
-//     canActivate         JSON,
-//     canActivateChild    JSON,
-//     canLoad             JSON,
-//     resolve             JSON,
-//     data                JSON,
-//     inserted_at         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-//     updated_at          DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-//     PRIMARY KEY (route, projectId),
-//     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
-//     FOREIGN KEY (module) REFERENCES modules(name) ON DELETE SET NULL,
-//     FOREIGN KEY (component) REFERENCES components(name) ON DELETE CASCADE
-// ) ENGINE=InnoDB;

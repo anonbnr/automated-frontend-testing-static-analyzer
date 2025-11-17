@@ -7,14 +7,13 @@ import logger from "../../logging/logger.js";
 
 import { UserJourney } from '../../llm/schemas.js';
 import { RowUserJourney } from '../../models/user-journeys/user-journey-info.js';
+import { StorageSession } from '../storageManager.js';
 
 
-export async function save(projectId : string, userJourney : UserJourney) {
-    let dbConnection: PoolConnection | undefined;
+export async function save(projectId : string, userJourney : UserJourney, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [result] = await dbConnection.query<ResultSetHeader>(
             `INSERT INTO userjourneys (projectId, id, rootModule, name, projectRoot, steps, path, intent, success)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -34,19 +33,14 @@ export async function save(projectId : string, userJourney : UserJourney) {
     } catch(e) {
         logger.error("Error: userJourneyStorage.save: ", e);
         return false;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
 
-export async function getAll(projectId: string): Promise<UserJourney[]> {
-    let dbConnection: PoolConnection | undefined;
+export async function getAll(projectId: string, storageSession: StorageSession): Promise<UserJourney[]> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [results] = await dbConnection.query<RowUserJourney[]>(
             `SELECT id, rootModule, name, projectRoot, steps, path, intent, success FROM userjourneys WHERE projectId=?`,
             [projectId]
@@ -73,8 +67,20 @@ export async function getAll(projectId: string): Promise<UserJourney[]> {
     } catch(e) {
         console.log("Error: userJourneyStorage.getAll: ", e);
         throw e;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
+    }
+}
+
+export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [result] = await dbConnection.query<ResultSetHeader>(
+            `DELETE FROM userjourneys WHERE projectId=?`,
+            [projectId]
+        );
+        return true;
+    } catch(e) {
+        console.log("Error: userJourneyStorage.getByProjectId: ", e);
+        return false;
     }
 }

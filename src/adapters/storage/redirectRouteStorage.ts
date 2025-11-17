@@ -5,13 +5,12 @@ import dbPool from "../../db/connection.js";
 import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 import { RedirectRoute, RowRedirectRoute } from '../../models/route-info.js';
+import { StorageSession } from '../storageManager.js';
 
-export async function save(projectId : string, redirectRoute : RedirectRoute) {
-    let dbConnection: PoolConnection | undefined;
+export async function save(projectId : string, redirectRoute : RedirectRoute, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [result] = await dbConnection.query<ResultSetHeader>(
             `INSERT INTO redirect_routes (projectId, route, module, redirectTo, pathMatch)
                 VALUES (?, ?, ?, ?, ?)`,
@@ -27,18 +26,13 @@ export async function save(projectId : string, redirectRoute : RedirectRoute) {
     } catch(e) {
         logger.error("Error: redirectRouteStorage.save: ", e);
         return false;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
     }
 }
 
-export async function getAll(projectId: string): Promise<RedirectRoute[]> {
-    let dbConnection: PoolConnection | undefined;
+export async function getAll(projectId: string, storageSession: StorageSession): Promise<RedirectRoute[]> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        dbConnection = await dbPool.getConnection();
-        
         const [results] = await dbConnection.query<RowRedirectRoute[]>(
             `SELECT route, module, redirectTo, pathMatch FROM redirect_routes WHERE projectId=?`,
             [projectId]
@@ -61,8 +55,20 @@ export async function getAll(projectId: string): Promise<RedirectRoute[]> {
     } catch(e) {
         console.log("Error: redirectRouteStorage.getAll: ", e);
         throw e;
-    } finally {
-        if (dbConnection)
-            dbConnection.release();
+    }
+}
+
+export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [result] = await dbConnection.query<ResultSetHeader>(
+            `DELETE FROM redirect_routes WHERE projectId=?`,
+            [projectId]
+        );
+        return true;
+    } catch(e) {
+        console.log("Error: redirectRouteStorage.getByProjectId: ", e);
+        return false;
     }
 }

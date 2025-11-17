@@ -6,5 +6,6 @@ export interface AnalysisProject extends RowDataPacket {
     projectRoot: string;
     description: string;
     url: string;
+    scannedAt?: string;
 }
 

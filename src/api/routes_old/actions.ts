@@ -20,6 +20,7 @@ import logger from "../../logging/logger.js";
 import { AppNavigation } from "../../models/navigation-graph.js";
 import { UserJourney } from "../../models/user-journeys/user-journey-info.js";
 import { parseActions } from "../../parsers/stage-action-dsl.js";
+import { ScenarioStep } from "../../models/scenarios/scenarioSteps.js";
 
 const router = Router();
 
@@ -83,7 +84,8 @@ router.post("/infer", (req: Request, res: Response) => {
             widgetIds?.length ?? 0
         );
 
-        const actions = inferActions(journey, graph, { widgetIds });
+        // const actions = inferActions(journey, graph, { widgetIds });
+        const actions: ScenarioStep[] = [];
 
         res.setHeader("Cache-Control", "no-store");
         res.setHeader("X-StageActions-Count", String(actions.length));

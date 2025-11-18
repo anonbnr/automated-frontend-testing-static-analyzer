@@ -61,10 +61,16 @@ export class WidgetUtils {
     *  - "input", "textarea", "select", "mat-select", "mat-checkbox", ...
     */
     static readonly FORM_FIELD_TYPES = new Set<string>([
-        'input', 'textarea', 'select',
+        'input','textarea', 'select',
         'mat-select', 'mat-checkbox', 'mat-radio-group', 'mat-radio-button',
         'mat-button-toggle', 'mat-button-toggle-group',
-        'mat-form-field'
+        'mat-form-field',
+        // ADDED BY NICOLAS, NEEDS CONFIRMATION
+        'text',
+        'email',
+        'number',
+        'date',
+        'password'
     ]);
 
     /**

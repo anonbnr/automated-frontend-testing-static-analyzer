@@ -49,10 +49,10 @@ export default function buildRoute(router: Router) {
             return resp.json( routeMap );
 
         } catch (err: any) {
-            logger.error("[GET /project/:projectId/modules] Fatal error: %o", err);
+            logger.error("[GET /project/:projectId/routes] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get project' });
+                .json({ error: err.message || 'Failed to get routes' });
         } finally {
             storageSession?.ends();
         }

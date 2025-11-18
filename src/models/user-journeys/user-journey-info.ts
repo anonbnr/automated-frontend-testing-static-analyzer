@@ -98,6 +98,7 @@ export interface UserJourney {
 
     /** Optional human-friendly label. */
     name?: string;
+    
 
     /** Absolute project root (for storage/export bucketing). */
     projectRoot?: string;

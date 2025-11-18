@@ -173,7 +173,7 @@ CREATE TABLE userjourneys (
 
 CREATE TABLE scenarios (
     scenarioId              INT AUTO_INCREMENT PRIMARY KEY,
-    userJourneyId           VARCHAR(512),
+    userJourneyId           VARCHAR(512)   NOT NULL,
     projectId               UUID           NOT NULL,
     name                    VARCHAR(128)   NOT NULL,
     description             TEXT,
@@ -187,7 +187,7 @@ CREATE TABLE scenarios (
     inserted_at             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (userJourneyId) REFERENCES userjourneys(id) ON DELETE SET NULL
+    FOREIGN KEY (userJourneyId) REFERENCES userjourneys(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- =====================================================================

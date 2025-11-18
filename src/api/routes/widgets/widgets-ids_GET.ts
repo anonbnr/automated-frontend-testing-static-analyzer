@@ -38,8 +38,8 @@ export default function buildRoute(router: Router) {
             return resp.json(widgetsIds);
 
         } catch (err: any) {
-            logger.error("[GET /project/:projectId/components] Fatal error: %o", err);
-            return resp.status(500).json({ error: err.message || 'Failed to get project' });
+            logger.error("[GET /project/:projectId/components/:componentId/widget-ids] Fatal error: %o", err);
+            return resp.status(500).json({ error: err.message || 'Failed to get widget-ids' });
         } finally {
             storageSession?.ends();
         }

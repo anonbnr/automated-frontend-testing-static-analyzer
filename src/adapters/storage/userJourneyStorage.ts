@@ -84,3 +84,32 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         return false;
     }
 }
+
+export async function getById(projectId: string, id: string, storageSession: StorageSession): Promise<UserJourney> {
+    let dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {        
+        const [result] = await dbConnection.query<RowUserJourney[]>(
+            `SELECT id, name, rootModule, projectRoot, steps, path, intent, success FROM userjourneys WHERE id=?`,
+            [id]
+        );
+
+        const rowUserJourney = result[0];
+
+        const userJourney = {
+            id: rowUserJourney.id,
+            name: rowUserJourney.name,
+            rootModule: rowUserJourney.rootModule,
+            projectRoot: rowUserJourney.projectRoot,
+            steps: JSON.parse(rowUserJourney.steps),
+            path: rowUserJourney.path !== undefined ? JSON.parse(rowUserJourney.path) : undefined,
+            intent: rowUserJourney.intent,
+            success: rowUserJourney.success
+        }
+
+        return userJourney;
+    } catch(e) {
+        console.log("Error: projectStorage.getById: ", e);
+        throw e;
+    }
+}

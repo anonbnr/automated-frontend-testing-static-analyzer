@@ -60,6 +60,30 @@ export async function getAll(projectId: string, storageSession: StorageSession):
     }
 }
 
+export async function get(projectId: string, storageSession: StorageSession): Promise<AppNavigation> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [results] = await dbConnection.query<RowAppNavigation[]>(
+            `SELECT nodes, edges, transitions FROM graphs
+             WHERE projectId=?`,
+            [projectId]
+
+        );
+
+
+        const graph = {
+            nodes: JSON.parse(results[0].nodes),
+            edges: JSON.parse(results[0].edges),
+            transitions: JSON.parse(results[0].transitions),
+        }
+        return graph;
+    } catch (e) {
+        console.log("Error: componentRouteStorage.getAll: ", e);
+        throw e;
+    }
+}
+
 export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();
 

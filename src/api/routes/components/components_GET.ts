@@ -42,7 +42,7 @@ export default function buildRoute(router: Router) {
             logger.error("[GET /project/:projectId/components] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get project' });
+                .json({ error: err.message || 'Failed to get components' });
         } finally {
             storageSession?.ends();
         }

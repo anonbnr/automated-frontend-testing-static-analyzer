@@ -125,7 +125,7 @@ export default function buildRoute(router: Router) {
             await storageSession?.rollback();
 
             // Unhandled error: log and return 500
-            logger.error('[POST /graph] Error building graph: %o', err);
+            logger.error('[DELETE /project/:projectId/analysis] Fatal error: %o', err);
             return resp
                 .status(500)
                 .json(err.message || 'Failed to analyse the project');

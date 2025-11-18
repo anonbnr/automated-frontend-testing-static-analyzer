@@ -2,7 +2,7 @@
 // builders/scenarios/action-inferer.ts
 //
 // Pure, deterministic inferer (M1.4):
-//   UserJourney + AppNavigation Graph  →  ordered StageAction[]
+//   UserJourney + AppNavigation Graph  →  ordered ScenarioStep[]
 //
 // Mapping:
 //   - First route + route transitions → 'navigate' (route/external)
@@ -27,249 +27,205 @@
 import { WidgetUtils } from "../../analyzers/template/widgets/widget-utils.js";
 import logger from "../../logging/logger.js";
 import { AppNavigation, GraphNode } from "../../models/navigation-graph.js";
-import { StageAction, StageTarget } from "../../models/scenarios/stage-action.js";
+import { ScenarioStep, StageActionType, StageTarget } from "../../models/scenarios/scenarioSteps.js";
 import { VIRTUAL_BACKEND } from "../../models/user-journeys/user-journey-constants.js";
 import { UserJourney, UserJourneyStep } from "../../models/user-journeys/user-journey-info.js";
 import { WidgetInfo } from "../../models/widget-info.js";
 
 export interface InferOptions {
     widgetIds?: string[];
+    widgetsMap: Map<string, WidgetInfo>;
 }
 
 /** Main entry */
-export function inferActions(journey: UserJourney, graph: AppNavigation | null, opts: InferOptions = {}): StageAction[] {
-    logger.info(
-        "[ActionInferer] inferActions journey=%s steps=%d graphNodes=%d catalog=%d",
-        journey?.id,
-        journey?.steps?.length ?? 0,
-        graph?.nodes?.length ?? 0,
-        Array.isArray(opts.widgetIds) ? opts.widgetIds.length : 0
-    );
+// export function inferActions(journey: UserJourney, graph: AppNavigation | null, opts: InferOptions): ScenarioStep[] {
+export function inferActions(journey: UserJourney, widgets: WidgetInfo[]): ScenarioStep[] {
 
-    const actions: StageAction[] = [];
-    const push = (a: Omit<StageAction, "order">, why?: string, ctx?: Record<string, any>) => {
-        const next = { order: actions.length, ...a } as StageAction;
-        actions.push(next);
-        logger.debug?.(
-            "[ActionInferer] +action #%d kind=%s target=%s:%s%s",
-            next.order, next.kind, next.target.type, next.target.id,
-            why ? `  (${why}${ctx ? " " + JSON.stringify(ctx) : ""})` : ""
-        );
-    };
+    const actions: ScenarioStep[] = [];
 
-    const nodes = new Map<string, GraphNode>((graph?.nodes || []).map(n => [norm(n.id), n]));
-    const widgetsById = collectWidgets(nodes);
+    const widgetsById = new Map<string, WidgetInfo>();
+    for (const widget of widgets) {
+        widgetsById.set(widget.id, widget);
+    }
 
     let lastNavTo: string | undefined;
     const steps = (journey?.steps ?? []);
-
+    
     for (let i = 0; i < steps.length; i++) {
-        const st = steps[i];
+        const step = steps[i];
 
-        switch (st.stepType) {
+        switch (step.stepType) {
             case 'route': {
-                const id = routeId(st.nodeId);
+                const id = routeId(step.nodeId);
                 if (id !== lastNavTo) {
-                    push({ kind: "navigate", target: { type: "route", id } }, "route-transition");
+                    actions.push({actionType: "navigate", target: { type: "route", id }});
                     lastNavTo = id;
                 }
-                else logger.debug?.("[ActionInferer] skip duplicate navigate(route) id=%s", id);
                 break;
             }
 
             case 'external-route': {
-                const id = st.nodeId;
+                const id = step.nodeId;
                 if (id !== lastNavTo) {
-                    push({ kind: 'navigate', target: { type: 'external', id } }, "external-route");
+                    actions.push({ actionType: 'navigate', target: { type: 'external', id } });
                     lastNavTo = id;
                 }
-                else logger.debug?.("[ActionInferer] skip duplicate navigate(external) id=%s", id);
                 break;
             }
 
             case 'widget': {
                 // Emit a *targeting* meta-hint only; the actual action usually comes with 'interaction'
-                const wid = st.nodeId;
-                const w = widgetsById.get(wid);
-                if (!w) {
-                    logger.debug?.("[ActionInferer] widget step skipped (unknown widget) id=%s", wid);
+                const widgetId = step.nodeId;
+                const widget = widgetsById.get(widgetId);
+                if (!widget) {
                     break;
                 }
 
                 // If next step is not interaction, try to guess a click to keep minimal coverage.
                 const next = steps[i + 1];
                 if (!next || next.stepType !== 'interaction') {
-                    const kind = guessActionKindFromWidget(w);
-                    push(
+                    const actionType = guessActionTypeFromWidget(widget);
+                    actions.push(
                         {
-                            kind,
-                            target: { type: 'widget', id: wid, display: w.type },
-                            meta: decorateWidgetMeta(w, /*via*/ undefined)
-                        },
-                        "widget-without-interaction",
-                        { widgetType: w.type }
+                            actionType,
+                            target: { type: 'widget', id: widgetId, display: widget.type },
+                            meta: decorateWidgetMeta(widget, /*via*/ undefined),
+                            validationRules: widget.validationRules,
+                            triggersFormSubmission: widget.triggersFormSubmission,
+                            sensitiveData: guessSensitiveData(widget),
+                        }
                     );
                 }
-                else logger.debug?.("[ActionInferer] widget step defers to following interaction id=%s", wid);
                 break;
             }
 
             case 'interaction': {
-                // Map via → action kind
-                const via = String(st.via || '').toLowerCase();
-                const wid = st.nodeId;
-                const w = widgetsById.get(wid);
+                // Map via → action actionType
+                const via = String(step.via || '').toLowerCase();
+                const widgetId = step.nodeId;
+                const widget = widgetsById.get(widgetId);
 
                 if (via === 'routerlink' || via === 'href' || via === 'static-redirect') {
                     // The *following* step is typically a route/external — we avoid double navigation here.
                     // If the next step is missing, we emit a generic navigate to keep coverage.
                     const next = steps[i + 1];
                     if (!next || (next.stepType !== 'route' && next.stepType !== 'external-route')) {
-                        push({ kind: 'navigate', target: { type: 'route', id: '/' } }, "link-without-followup");
+                        actions.push({ actionType: 'navigate', target: { type: 'route', id: '/' } });
                     }
-                    else logger.debug?.("[ActionInferer] interaction via=%s defers to next step", via);
                     break;
                 }
 
                 // UI interactions
-                if (!w) {
+                if (!widget) {
                     // Unknown widget → fallback click
-                    push(
+                    actions.push(
                         {
-                            kind: 'click',
-                            target: { type: 'widget', id: wid },
-                            meta: { via }
-                        },
-                        "interaction-unknown-widget",
-                        { via }
+                            actionType: 'click',
+                            target: { type: 'widget', id: widgetId },
+                            meta: { via },
+                            sensitiveData: false,
+                            triggersFormSubmission: false,
+                        }
                     );
                     break;
                 }
 
-                const meta = decorateWidgetMeta(w, via);
-
+                let meta = decorateWidgetMeta(widget, via);
+                let actionType: StageActionType;
+                let value = undefined;
                 switch (via) {
                     case 'click':
-                        push({ kind: 'click', target: { type: 'widget', id: wid, display: w.type }, meta }, "interaction.click");
+                        actionType = 'click';
                         break;
                     case 'submit':
-                        push({ kind: 'submit', target: { type: 'widget', id: wid, display: w.type }, meta }, "interaction.submit");
+                        actionType = 'submit';
                         break;
                     case 'input':
-                        push(
-                            {
-                                kind: 'input',
-                                target: { type: 'widget', id: wid, display: w.type },
-                                value: defaultValueFor(w),
-                                meta
-                            },
-                            "interaction.input",
-                            { defaulted: true }
-                        );
+                        actionType = 'input';
+                        value = defaultValueFor(widget);
                         break;
                     case 'change': {
-                        const changeKind = changeKindFor(w); // 'change' | 'check' | 'uncheck'
-                        push(
-                            {
-                                kind: changeKind,
-                                target: { type: 'widget', id: wid, display: w.type },
-                                value: defaultValueFor(w),
-                                meta
-                            },
-                            "interaction.change",
-                            { resolvedKind: changeKind, defaulted: true }
-                        );
+                        actionType = changeKindFor(widget); // 'change' | 'check' | 'uncheck'
+                        value = defaultValueFor(widget);
                         break;
                     }
                     default:
                         // Unknown via → best-effort
-                        const guessed = guessActionKindFromWidget(w);
-                        push(
-                            {
-                                kind: guessed,
-                                target: { type: 'widget', id: wid, display: w.type },
-                                meta: { ...meta, via }
-                            },
-                            "interaction.unknown-via",
-                            { via, guessed }
-                        );
+                        actionType = guessActionTypeFromWidget(widget);
+                        meta = {...meta, via};
                 }
+                actions.push({
+                    actionType: actionType,
+                    target: { type: 'widget', id: widgetId, display: widget.type },
+                    value: value,
+                    validationRules: widget.validationRules,
+                    triggersFormSubmission: widget.triggersFormSubmission,
+                    sensitiveData: guessSensitiveData(widget),
+                    meta
+                })
                 break;
             }
 
             case 'backend': {
-                const id = st.nodeId || VIRTUAL_BACKEND;
-                push(
+                const id = step.nodeId || VIRTUAL_BACKEND;
+                actions.push(
                     {
-                        kind: 'noop',
+                        actionType: 'noop',
                         target: toBackendTarget(id),
                         meta: { reason: 'terminal backend step (oracle hint)' }
                     },
-                    "backend"
                 );
                 break;
             }
             case 'virtual-route': {
-                push(
+                actions.push(
                     {
-                        kind: 'noop',
-                        target: { type: 'virtual', id: st.nodeId },
+                        actionType: 'noop',
+                        target: { type: 'virtual', id: step.nodeId },
                         meta: { reason: 'terminal virtual step (oracle hint)' }
-                    },
-                    "virtual-route"
+                    }
                 );
                 break;
             }
-            default:
-                // component/module steps do not create actions
-                logger.debug?.("[ActionInferer] stepType=%s ignored", st.stepType);
-                break;
         }
     }
 
     // Guarantee at least one navigate/click for no-form journeys
-    if (!actions.some(a => a.kind === 'navigate' || a.kind === 'click')) {
-        push(
+    if (!actions.some(a => a.actionType === 'navigate' || a.actionType === 'click')) {
+        actions.push(
             {
-                kind: 'navigate',
+                actionType: 'navigate',
                 target: { type: 'route', id: firstRoute(steps) ?? '/' }
-            },
-            "ensure-minimal-coverage"
+            }
         );
     }
 
     // enrich from scenario-subgraph widget catalog (if provided)
-    if (Array.isArray(opts.widgetIds) && opts.widgetIds.length) {
-        const existingTargets = new Set(
-            actions.filter(a => a.target?.type === 'widget').map(a => norm(a.target.id))
+    const existingTargets = new Set(
+        actions.filter(a => a.target?.type === 'widget').map(a => norm(a.target.id))
+    );
+
+    let appended = 0;
+    for (const widget of widgets) {
+        if (existingTargets.has(widget.id)) continue; // already covered by step-driven inference
+
+        const guessed = guessActionTypeFromWidget(widget);
+        actions.push(
+            {
+                actionType: guessed,
+                target: { type: 'widget', id: widget.id, display: widget.type },
+                value: guessed === 'input' || guessed === 'change' ? defaultValueFor(widget) : undefined,
+                meta: decorateWidgetMeta(widget, undefined),
+                validationRules: widget.validationRules,
+                triggersFormSubmission: widget.triggersFormSubmission,
+                sensitiveData: guessSensitiveData(widget),
+            }
         );
-
-        let appended = 0;
-        for (const raw of opts.widgetIds) {
-            const wid = norm(raw);
-            if (existingTargets.has(wid)) continue; // already covered by step-driven inference
-            const w = widgetsById.get(wid);
-            if (!w) continue;
-
-            const guessed = guessActionKindFromWidget(w);
-            push(
-                {
-                    kind: guessed,
-                    target: { type: 'widget', id: wid, display: w.type },
-                    value: guessed === 'input' || guessed === 'change' ? defaultValueFor(w) : undefined,
-                    meta: decorateWidgetMeta(w, undefined)
-                },
-                "catalog-extra",
-                { widgetType: w.type }
-            );
-            appended++;
-        }
-        logger.info("[ActionInferer] catalog enrichment appended %d widget action(s)", appended);
+        appended++;
     }
-
-    logger.info("[ActionInferer] produced %d actions", actions.length);
     return actions;
 }
+
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function norm(s: string) { return (s || '').trim(); }
@@ -278,31 +234,11 @@ function firstRoute(steps: UserJourneyStep[]): string | undefined {
     return steps.find(s => s.stepType === 'route')?.nodeId?.replace(/^\/?/, "/");
 }
 
-function collectWidgets(nodes: Map<string, any>): Map<string, WidgetInfo> {
-    const m = new Map<string, WidgetInfo>();
-    for (const n of nodes.values()) {
-        if (n.type === 'widget') {
-            const w: WidgetInfo = {
-                id: n.id,
-                type: n.attributes?.['type'] || n.type,
-                events: n.attributes?.['events'] || {},
-                attributes: n.attributes ?? {},
-                validationRules: n.validationRules ?? [],
-                triggersFormSubmission: !!n.triggersFormSubmission,
-                children: []
-            };
-            m.set(w.id, w);
-        }
-    }
-    return m;
-}
-
 function decorateWidgetMeta(w: WidgetInfo, via?: string): Record<string, any> {
     const opts = optionsFor(w);
     const selectorHint = selectorHintFor(w);
     return {
         via,
-        validators: w.validationRules ?? [],
         options: opts.length ? opts : undefined,
         selectorHint
     };
@@ -334,23 +270,40 @@ function changeKindFor(w: WidgetInfo): 'change' | 'check' | 'uncheck' {
     return 'change';
 }
 
-function optionsFor(w: WidgetInfo): any[] {
+function optionsFor(widget: WidgetInfo): any[] {
     // best-effort: try common shapes or attributes.options
-    const a = w.attributes || {};
+    const a = widget.attributes || {};
     const opts = (a['options'] as any[]) || (a['data']?.['options']) || [];
     return Array.isArray(opts) ? opts : [];
 }
 
-function guessActionKindFromWidget(w: WidgetInfo): 'click' | 'submit' | 'input' | 'change' {
-    const t = WidgetUtils.wType(w);
-    if (WidgetUtils.isSubmitButton(t)) return 'submit';
-    if (WidgetUtils.isFormField(t)) {
-        if (t === 'input' || t === 'textarea' || t === 'email' || t === 'text' || t === 'number' || t === 'date' || t === 'password') {
+function guessActionTypeFromWidget(widget: WidgetInfo): 'click' | 'submit' | 'input' | 'change' {
+    const inputTypes = ['input', 'textarea', 'email', 'text', 'number', 'date', 'password',
+        // ADDED BY NICOLAS, NEEDS CONFIRMATION
+        'file'
+    ];
+    
+    const type = WidgetUtils.wType(widget);
+
+    if (WidgetUtils.isSubmitButton(type))
+        return 'submit';
+
+    if (WidgetUtils.isFormField(type)) {
+        if (inputTypes.includes(type))
             return 'input';
-        }
-        return 'change';
+        else
+            return 'change';
     }
+
     return 'click';
+}
+
+function guessSensitiveData(widget: WidgetInfo) {
+    const sensitiveTypes = ['password'];
+
+    const type = WidgetUtils.wType(widget);
+    
+    return sensitiveTypes.includes(type);
 }
 
 function toBackendTarget(id: string): StageTarget {
@@ -358,8 +311,8 @@ function toBackendTarget(id: string): StageTarget {
     return { type: 'backend', id: clean };
 }
 
-function selectorHintFor(w: WidgetInfo): string | undefined {
-    const a = w.attributes || {};
+function selectorHintFor(widget: WidgetInfo): string | undefined {
+    const a = widget.attributes || {};
     // highest-signal first
     if (a['data-e2e']) return `[data-e2e="${a['data-e2e']}"]`;
     if (a['id']) return `#${a['id']}`;

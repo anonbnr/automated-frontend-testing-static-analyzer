@@ -20,7 +20,7 @@
 //     attr(name="value", role="button")   // carried as display + synthetic id "attr:…"
 // ──────────────────────────────────────────────────────────────────────────────
 import logger from "../logging/logger.js";
-import { StageAction, StageTarget } from "../models/scenarios/stage-action.js";
+import { ScenarioStep, StageTarget } from "../models/scenarios/scenarioSteps.js";
 
 export interface ActionDiagnostic {
     line: number;
@@ -30,7 +30,7 @@ export interface ActionDiagnostic {
 }
 
 export interface ParseActionsResult {
-    actions: StageAction[];
+    actions: ScenarioStep[];
     diagnostics: ActionDiagnostic[];
 }
 
@@ -59,15 +59,14 @@ const RX = {
 export function parseActions(script: string): ParseActionsResult {
     logger.info("[StageActionDSL] parseActions length=%d", script?.length ?? 0);
     const diagnostics: ActionDiagnostic[] = [];
-    const out: StageAction[] = [];
+    const out: ScenarioStep[] = [];
 
-    const push = (a: Omit<StageAction, "order">, line?: number) => {
-        const next = { order: out.length, ...a } as StageAction;
+    const push = (a: Omit<ScenarioStep, "order">, line?: number) => {
+        const next = { order: out.length, ...a } as ScenarioStep;
         out.push(next);
         logger.debug?.(
             "[StageActionDSL] +action #%d kind=%s target=%s:%s line=%s",
-            next.order,
-            next.kind,
+            next.actionType,
             next.target.type,
             next.target.id,
             line ?? "-"
@@ -91,7 +90,7 @@ export function parseActions(script: string): ParseActionsResult {
                     const target: StageTarget = isExternal(t)
                         ? { type: 'external', id: t }
                         : { type: 'route', id: normalizeRoute(t) };
-                    push({ kind: 'navigate', target });
+                    push({ actionType: 'navigate', target });
                     break;
                 }
                 case 'CLICK':
@@ -100,8 +99,8 @@ export function parseActions(script: string): ParseActionsResult {
                 case 'UNCHECK': {
                     const ref = parseTargetFromRef(tail);
                     if (!ref) return err(`${head} needs a widget ref`, line);
-                    const kind = head.toLowerCase() as any;
-                    push({ kind, target: ref });
+                    const actionType = head.toLowerCase() as any;
+                    push({ actionType, target: ref });
                     break;
                 }
                 case 'INPUT':
@@ -110,14 +109,14 @@ export function parseActions(script: string): ParseActionsResult {
                     const ref = parseTargetFromRef(lhs);
                     const value = parseQuoted(rhs) ?? rhs;
                     if (!ref || value == null) return err(`${head} needs <ref> = "value"`, line);
-                    const kind = head.toLowerCase() as any;
-                    push({ kind, target: ref, value });
+                    const actionType = head.toLowerCase() as any;
+                    push({ actionType, target: ref, value });
                     break;
                 }
 
                 case 'NOOP': {
                     const reason = parseQuoted(tail) ?? (tail || 'noop');
-                    push({ kind: 'noop', target: { type: 'virtual', id: '/ui/noop' }, meta: { reason } });
+                    push({ actionType: 'noop', target: { type: 'virtual', id: '/ui/noop' }, meta: { reason } });
                     break;
                 }
 

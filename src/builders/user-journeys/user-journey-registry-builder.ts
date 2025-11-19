@@ -25,6 +25,7 @@ import { deriveUserJourneyIntent } from "./intent-labels.js";
 import { DefaultIntentResolver, IntentResolver } from "./intent-resolver.js";
 import { validateUserJourneyArtifacts } from "./user-journey-artifact-validator.js";
 import { UserJourneyAssembler } from "./user-journey-assembler.js";
+import { inferExpandedSteps } from "./user-journey-expanded-step-inferer.js";
 import { FanoutMode, UserJourneyPostProcessor, UserJourneyPreProcessor } from "./user-journey-processors.js";
 
 export class UserJourneyRegistryBuilder {

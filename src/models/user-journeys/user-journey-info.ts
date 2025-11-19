@@ -34,6 +34,7 @@ import { RowDataPacket } from "mysql2";
 import logger from "../../logging/logger.js";
 import { NavEventType, UserEventType } from "../event-info.js";
 import { GraphRelationType } from "../navigation-graph.js";
+import { UserJourneyExpandedStep } from "./user-journey-expanded-step.js";
 
 /** Discrete step kinds in a user journey. Mirrors graph node kinds + "interaction". */
 export type UserJourneyStepType =
@@ -105,6 +106,8 @@ export interface UserJourney {
 
     /** The ordered list of steps (U). */
     steps: UserJourneyStep[];
+
+    expandedSteps?: UserJourneyExpandedStep[];
 
     /** Optional author-provided pruned path (P). */
     path?: PrunedPath;

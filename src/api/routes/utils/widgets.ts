@@ -25,3 +25,17 @@ export function makeWidgetsTree(widgets: WidgetInfo[], _currentWidgets?: WidgetI
 
     return sortedWidgets;
 }
+
+export function flattenWidgets(widgets: WidgetInfo[]): WidgetInfo[] {
+    const result: WidgetInfo[] = [];
+
+    for (const widget of widgets) {
+        result.push(widget);
+
+        if (widget.children && widget.children.length > 0) {
+            result.push(...flattenWidgets(widget.children));
+        }
+    }
+
+    return result;
+}

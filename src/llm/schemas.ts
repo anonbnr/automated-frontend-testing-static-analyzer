@@ -127,6 +127,34 @@ const JourneyStepType = z.enum([
     'backend',
 ]);
 
+const ActionType = z.enum([
+    'navigate',
+    'click',
+    'submit',
+    'input',
+    'change',
+    'check',
+    'uncheck',
+    'noop',
+    'select',
+    'upload',
+    'waitFor',
+]);
+
+const StageTargetType = z.enum ([
+    'route',
+    'external',
+    'widget',
+    'backend',
+    'virtual',
+]);
+
+const StageTarget = z.object ({
+    type: StageTargetType,
+    id:z.string().min(1),
+    string:z.string().min(1),
+});
+
 /** One atomic step in a journey sequence. */
 const JourneyStep = z.object({
     /** The semantic kind of this step. */
@@ -136,6 +164,16 @@ const JourneyStep = z.object({
     /** Optional interaction “via” (e.g., click, routerLink, href, submit, …). */
     via: z.string().optional(),
     /** Arbitrary extra data (e.g., service/method/sourceEvent). */
+    metadata: z.record(z.string(), z.any()).optional(),
+});
+
+const JourneyExpandedStep = z.object({
+    actionType: ActionType,
+    target: StageTarget,
+    widgetId: z.string().min(1).optional(),
+    validationRules: z.array(z.string()).optional(),
+    triggersFormSubmission: z.boolean().optional(),
+    sensitiveData: z.boolean().optional(),
     metadata: z.record(z.string(), z.any()).optional(),
 });
 
@@ -159,6 +197,7 @@ export const UserJourneySchema = z.object({
     projectRoot: z.string().optional(),
     /** Ordered steps. */
     steps: z.array(JourneyStep).min(1),
+    expandedSteps: z.array(JourneyExpandedStep).optional(),
     /** Optional embedded subgraph context. */
     path: PrunedPath,
     /** intent bucket derived from terminals. */

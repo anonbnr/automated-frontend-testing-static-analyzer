@@ -1,9 +1,9 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/projectStorage.js';
-import * as componentRouteStorage from '../../../adapters/storage/componentRouteStorage.js';
-import * as redirectRouteStorage from '../../../adapters/storage/redirectRouteStorage.js';
-import * as routeRoleStorage from '../../../adapters/storage/routeRoleStorage.js';
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as componentRouteStorage from '../../../adapters/storage/component-route-storage.js';
+import * as redirectRouteStorage from '../../../adapters/storage/redirect-route-storage.js';
+import * as routeRoleStorage from '../../../adapters/storage/route-role-storage.js';
 import { ComponentRouteMap, RouteMap, RouteRoles } from '../../../models/route-info.js';
 import { ComponentInfo } from '../../../models/component-info.js';
 import { StorageSession } from '../../../adapters/storageManager.js';

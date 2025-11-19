@@ -1,39 +1,40 @@
 import { RowDataPacket } from "mysql2";
-import { ScenarioStep } from "./scenarioSteps.js";
+import { ScenarioStep } from "./scenario-steps.js";
 
 
 export type ScenarioEditedByEnum = 'analyzer' | 'llm' | 'user'
 export type ScenarioStatusEnum = 'draft' | 'ready' | 'deprecated'
 
+export interface ScenarioStepData {
+    value: string;
+    usersNote: string;
+}
+
 export interface Scenario {
 
-    id: string;
-
-    userJourneyId: string;
+    userJourneyId: string
 
     name: string;
 
     description?: string;
 
-    editedBy: ScenarioEditedByEnum;
-
-    startRoutePath: string;
-
-    startRouteComponentSelector: string;
+    editedBy: ScenarioEditedByEnum; // computed
 
     tags?: string[];
 
     status: ScenarioStatusEnum;
 
-    steps: ScenarioStep[];
+    stepsData: ScenarioStepData[];
 
+    // !! NEEDS MORE DETAILS !! \\
+    coverage?: string;
+    
+    id?: number;
 }
 
 export interface RowScenario extends RowDataPacket {
 
-    id: string;
-
-    userJourneyId: string;
+    userJourneyId: string
 
     name: string;
 
@@ -43,13 +44,17 @@ export interface RowScenario extends RowDataPacket {
 
     startRoutePath: string;
 
-    startRouteComponentSelector: string;
+    startComponentSelector: string;
 
     tags?: string;
 
     status: ScenarioStatusEnum;
 
-    steps: string;
+    stepsData: string;
 
+    // !! NEEDS MORE DETAILS !! \\
+    coverage?: string;
+
+    id?: number;
 }
 

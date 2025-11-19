@@ -1,41 +1,41 @@
-/**
- * Gather all widgets IDs (flattened array) for a specified component.
- * Retrieve the widgets from the previously computed analysis.
- */
-
 import { Request, Response, Router } from 'express';
 
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
-import { WidgetInfo, RowWidgetInfo } from '../../../models/widget-info.js';
 import { makeWidgetsTree } from '../utils/widgets.js';
 import logger from '../../../logging/logger.js';
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
+import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
 
 
 // Auto-loaded function (in index.ts loadAndBuildRoutes()) for building route
 export default function buildRoute(router: Router) {
 
-    router.get('/projects/:projectId/components/:componentSelector/widgets-ids', async (req: Request, resp: Response) => {
+    router.get('/projects/:projectId/user-journeys/:journeyId/scenarios', async (req: Request, resp: Response) => {
 
         let storageSession: StorageSession | undefined;
 
         try {
-            storageSession = await  storageManager.getSession();
+            storageSession = await storageManager.getSession();
 
             const projectId = req.params.projectId;
-            const componentSelector = req.params.componentSelector;
+            const userJourneyId = req.params.journeyId;
+            const scenarioId = req.params.scenarioId;
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
                 return resp.status(404).json({ error: "project not found" });
             }
-            
-            const flatedWidgets: WidgetInfo[] = await widgetStorage.getByComponentSelector(projectId, componentSelector, storageSession);
-            const widgetsIds = flatedWidgets.map(widget => widget.id);
 
-            return resp.json(widgetsIds);
+            const userJourney = await userJourneyStorage.getById(projectId, userJourneyId, storageSession);
+            if (userJourney === undefined) {
+                return resp.status(404).json({ error: "user-journey not found" });
+            }
+            
+            const scenarios = await scenarioStorage.getByUserJourney(projectId, userJourneyId, storageSession);
+
+            return resp.json(scenarios);
 
         } catch (err: any) {
             logger.error("[GET /project/:projectId/components/:componentId/widget-ids] Fatal error: %o", err);

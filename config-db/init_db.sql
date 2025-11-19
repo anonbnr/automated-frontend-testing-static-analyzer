@@ -156,6 +156,7 @@ CREATE TABLE userjourneys (
     projectId        UUID           NOT NULL,
     rootModule       VARCHAR(128)   NOT NULL,
     steps            JSON           NOT NULL,
+    expandedSteps    JSON           NOT NULL,
     name             VARCHAR(128),
     projectRoot      VARCHAR(1024),
     path             JSON,
@@ -172,18 +173,16 @@ CREATE TABLE userjourneys (
 -- =====================================================================
 
 CREATE TABLE scenarios (
-    scenarioId              INT AUTO_INCREMENT PRIMARY KEY,
+    id                      INT AUTO_INCREMENT PRIMARY KEY,
     userJourneyId           VARCHAR(512)   NOT NULL,
     projectId               UUID           NOT NULL,
     name                    VARCHAR(128)   NOT NULL,
     description             TEXT,
     editedBy                VARCHAR(32)    NOT NULL,
-    startRoutePath          VARCHAR(512)   NOT NULL,
-    startComponentSelector  VARCHAR(128)   NOT NULL,
     tags                    JSON,
     status                  VARCHAR(32),
     coverage                JSON,
-    steps                   JSON,
+    stepsData               JSON,
     inserted_at             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
@@ -195,7 +194,7 @@ CREATE TABLE scenarios (
 -- =====================================================================
 
 CREATE TABLE workflows (
-    workflowId      INT AUTO_INCREMENT PRIMARY KEY,
+    id              INT AUTO_INCREMENT PRIMARY KEY,
     projectId       UUID           NOT NULL,
     name            VARCHAR(128)   NOT NULL,
     description     TEXT,
@@ -216,6 +215,6 @@ CREATE TABLE workflows_scenarios (
     updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (workflowId, testScenarioId),
     UNIQUE (workflowId, `order`),
-    FOREIGN KEY (workflowId) REFERENCES workflows(workflowId) ON DELETE CASCADE,
-    FOREIGN KEY (testScenarioId) REFERENCES scenarios(scenarioId) ON DELETE CASCADE
+    FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
+    FOREIGN KEY (testScenarioId) REFERENCES scenarios(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

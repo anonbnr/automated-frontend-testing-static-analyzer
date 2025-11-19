@@ -15,12 +15,12 @@
 
 import { Request, Response, Router } from "express";
 import { performance } from "node:perf_hooks";
-import { inferActions } from "../../builders/scenarios/action-inferer.js";
+import { inferActions } from "../../builders/scenarios/scenario-step-inferer.js";
 import logger from "../../logging/logger.js";
 import { AppNavigation } from "../../models/navigation-graph.js";
 import { UserJourney } from "../../models/user-journeys/user-journey-info.js";
 import { parseActions } from "../../parsers/stage-action-dsl.js";
-import { ScenarioStep } from "../../models/scenarios/scenarioSteps.js";
+import { ScenarioStep } from "../../models/scenarios/scenario-steps.js";
 
 const router = Router();
 

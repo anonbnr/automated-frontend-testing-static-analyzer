@@ -1,14 +1,14 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/projectStorage.js';
-import * as moduleStorage from '../../../adapters/storage/moduleStorage.js';
-import * as componentStorage from '../../../adapters/storage/componentStorage.js';
-import * as graphStorage from '../../../adapters/storage/graphStorage.js';
-import * as widgetStorage from '../../../adapters/storage/widgetStorage.js';
-import * as componentRouteStorage from '../../../adapters/storage/componentRouteStorage.js';
-import * as redirectRouteStorage from '../../../adapters/storage/redirectRouteStorage.js';
-import * as routeRoleStorage from '../../../adapters/storage/routeRoleStorage.js';
-import * as userJourneyStorage from '../../../adapters/storage/userJourneyStorage.js';
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as moduleStorage from '../../../adapters/storage/module-storage.js';
+import * as componentStorage from '../../../adapters/storage/component-storage.js';
+import * as graphStorage from '../../../adapters/storage/graph-storage.js';
+import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
+import * as componentRouteStorage from '../../../adapters/storage/component-route-storage.js';
+import * as redirectRouteStorage from '../../../adapters/storage/redirect-route-storage.js';
+import * as routeRoleStorage from '../../../adapters/storage/route-role-storage.js';
+import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
 

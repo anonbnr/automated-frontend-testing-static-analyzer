@@ -1,34 +1,13 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// builders/scenarios/action-inferer.ts
-//
-// Pure, deterministic inferer (M1.4):
-//   UserJourney + AppNavigation Graph  →  ordered ScenarioStep[]
-//
-// Mapping:
-//   - First route + route transitions → 'navigate' (route/external)
-//   - Widgets → usually paired with an 'interaction' step; if missing, guess
-//               sensible action (click/input/change) from widget type
-//   - interaction.via:
-//        click      → click
-//        submit     → submit
-//        input      → input (with defaultValue)
-//        change     → change / check / uncheck
-//        routerLink/href/static-redirect → (skip; next step should be route)
-//   - backend / virtual-route → noop (oracle hint via meta.reason)
-//
-// Guarantees:
-//   - Deterministic (pure): same input → same output
-//   - At least one navigate/click for no-form journeys
-//
-// Observability:
-//   - debug log per emitted action: stepType, via, widgetId, decision
+// builders/user-journeys/user-journey-step-inferer.ts
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { WidgetUtils } from "../../analyzers/template/widgets/widget-utils.js";
 import logger from "../../logging/logger.js";
 import { AppNavigation, GraphNode } from "../../models/navigation-graph.js";
-import { ScenarioStep, StageActionType, StageTarget } from "../../models/scenarios/scenarioSteps.js";
+import { StageActionType, StageTarget } from "../../models/scenarios/scenario-steps.js";
 import { VIRTUAL_BACKEND } from "../../models/user-journeys/user-journey-constants.js";
+import { UserJourneyExpandedStep } from "../../models/user-journeys/user-journey-expanded-step.js";
 import { UserJourney, UserJourneyStep } from "../../models/user-journeys/user-journey-info.js";
 import { WidgetInfo } from "../../models/widget-info.js";
 
@@ -38,10 +17,10 @@ export interface InferOptions {
 }
 
 /** Main entry */
-// export function inferActions(journey: UserJourney, graph: AppNavigation | null, opts: InferOptions): ScenarioStep[] {
-export function inferActions(journey: UserJourney, widgets: WidgetInfo[]): ScenarioStep[] {
+// export function inferActions(journey: UserJourney, graph: AppNavigation | null, opts: InferOptions): UserJourneyExpandedStep[] {
+export function inferExpandedSteps(steps: UserJourneyStep[], widgets: WidgetInfo[]): UserJourneyExpandedStep[] {
 
-    const actions: ScenarioStep[] = [];
+    const actions: UserJourneyExpandedStep[] = [];
 
     const widgetsById = new Map<string, WidgetInfo>();
     for (const widget of widgets) {
@@ -49,7 +28,6 @@ export function inferActions(journey: UserJourney, widgets: WidgetInfo[]): Scena
     }
 
     let lastNavTo: string | undefined;
-    const steps = (journey?.steps ?? []);
     
     for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
@@ -142,11 +120,9 @@ export function inferActions(journey: UserJourney, widgets: WidgetInfo[]): Scena
                         break;
                     case 'input':
                         actionType = 'input';
-                        value = defaultValueFor(widget);
                         break;
                     case 'change': {
                         actionType = changeKindFor(widget); // 'change' | 'check' | 'uncheck'
-                        value = defaultValueFor(widget);
                         break;
                     }
                     default:
@@ -157,7 +133,6 @@ export function inferActions(journey: UserJourney, widgets: WidgetInfo[]): Scena
                 actions.push({
                     actionType: actionType,
                     target: { type: 'widget', id: widgetId, display: widget.type },
-                    value: value,
                     validationRules: widget.validationRules,
                     triggersFormSubmission: widget.triggersFormSubmission,
                     sensitiveData: guessSensitiveData(widget),
@@ -214,7 +189,6 @@ export function inferActions(journey: UserJourney, widgets: WidgetInfo[]): Scena
             {
                 actionType: guessed,
                 target: { type: 'widget', id: widget.id, display: widget.type },
-                value: guessed === 'input' || guessed === 'change' ? defaultValueFor(widget) : undefined,
                 meta: decorateWidgetMeta(widget, undefined),
                 validationRules: widget.validationRules,
                 triggersFormSubmission: widget.triggersFormSubmission,
@@ -244,22 +218,6 @@ function decorateWidgetMeta(w: WidgetInfo, via?: string): Record<string, any> {
     };
 }
 
-function defaultValueFor(w: WidgetInfo): any {
-    // very light defaults for M1.4 (Faker comes in M1.6)
-    const t = WidgetUtils.wType(w);
-    switch (t) {
-        case 'email': return 'user@example.com';
-        case 'number': return '1';
-        case 'date': return '2000-01-01';
-        case 'time': return '12:00';
-        case 'month': return '2000-01';
-        case 'week': return '2000-W01';
-        case 'color': return '#000000';
-    }
-    const opts = optionsFor(w);
-    return opts.length ? opts[0] : '';
-}
-
 function changeKindFor(w: WidgetInfo): 'change' | 'check' | 'uncheck' {
     const t = WidgetUtils.wType(w);
     if (t === 'checkbox' || t === 'mat-checkbox') {
@@ -279,7 +237,6 @@ function optionsFor(widget: WidgetInfo): any[] {
 
 function guessActionTypeFromWidget(widget: WidgetInfo): 'click' | 'submit' | 'input' | 'change' {
     const inputTypes = ['input', 'textarea', 'email', 'text', 'number', 'date', 'password',
-        // ADDED BY NICOLAS, NEEDS CONFIRMATION
         'file'
     ];
     

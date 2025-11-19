@@ -20,7 +20,7 @@
 //     attr(name="value", role="button")   // carried as display + synthetic id "attr:…"
 // ──────────────────────────────────────────────────────────────────────────────
 import logger from "../logging/logger.js";
-import { ScenarioStep, StageTarget } from "../models/scenarios/scenarioSteps.js";
+import { ScenarioStep, StageTarget } from "../models/scenarios/scenario-steps.js";
 
 export interface ActionDiagnostic {
     line: number;

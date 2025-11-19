@@ -199,7 +199,7 @@ export function setScenario(analyzeId: string, UserJourneyId: string, scenario: 
 	}
 
 	updateExpiration(analyze);
-	journey.scenarios.set(scenario.id, scenario);
+	// journey.scenarios.set(scenario.id, scenario);
 
 	return true;
 }

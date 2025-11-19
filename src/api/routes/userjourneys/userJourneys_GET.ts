@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/projectStorage.js';
-import * as userJourneyStorare from '../../../adapters/storage/userJourneyStorage.js';
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as userJourneyStorare from '../../../adapters/storage/user-journey-storage.js';
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
 

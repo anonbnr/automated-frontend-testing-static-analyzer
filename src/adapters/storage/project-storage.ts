@@ -111,7 +111,7 @@ export async function deleteById(id: string, storageSession: StorageSession) {
         );
         return result;
     } catch(e) {
-        console.log("Error: projectStorage.getById: ", e);
+        console.log("Error: projectStorage.deleteById: ", e);
         return undefined;
     }
 }

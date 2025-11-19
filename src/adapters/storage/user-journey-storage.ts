@@ -5,7 +5,7 @@ import dbPool from "../../db/connection.js";
 import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 
-import { UserJourney } from '../../llm/schemas.js';
+import { UserJourney } from '../../models/user-journeys/user-journey-info.js';
 import { RowUserJourney } from '../../models/user-journeys/user-journey-info.js';
 import { StorageSession } from '../storageManager.js';
 
@@ -15,8 +15,8 @@ export async function save(projectId : string, userJourney : UserJourney, storag
 
     try {
         const [result] = await dbConnection.query<ResultSetHeader>(
-            `INSERT INTO userjourneys (projectId, id, rootModule, name, projectRoot, steps, path, intent, success)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO userjourneys (projectId, id, rootModule, name, projectRoot, steps, expandedSteps, path, intent, success)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 projectId,
                 userJourney.id,
@@ -24,6 +24,7 @@ export async function save(projectId : string, userJourney : UserJourney, storag
                 userJourney.name,
                 userJourney.projectRoot,
                 JSON.stringify(userJourney.steps),
+                JSON.stringify(userJourney.expandedSteps),
                 JSON.stringify(userJourney.path),
                 userJourney.intent,
                 userJourney.success
@@ -42,7 +43,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 
     try {
         const [results] = await dbConnection.query<RowUserJourney[]>(
-            `SELECT id, rootModule, name, projectRoot, steps, path, intent, success FROM userjourneys WHERE projectId=?`,
+            `SELECT id, rootModule, name, projectRoot, steps, expandedSteps, path, intent, success FROM userjourneys WHERE projectId=?`,
             [projectId]
         );
 
@@ -56,6 +57,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
                 rootModule: result.rootModule,
                 projectRoot: result.projectRoot,
                 steps: JSON.parse(result.steps),
+                expandedSteps: JSON.parse(result.expandedSteps),
                 path: result.path !== undefined ? JSON.parse(result.path) : undefined,
                 intent: result.intent,
                 success: result.success
@@ -90,7 +92,7 @@ export async function getById(projectId: string, id: string, storageSession: Sto
 
     try {        
         const [result] = await dbConnection.query<RowUserJourney[]>(
-            `SELECT id, name, rootModule, projectRoot, steps, path, intent, success FROM userjourneys WHERE id=?`,
+            `SELECT id, name, rootModule, projectRoot, steps, expandedSteps, path, intent, success FROM userjourneys WHERE id=?`,
             [id]
         );
 
@@ -102,6 +104,7 @@ export async function getById(projectId: string, id: string, storageSession: Sto
             rootModule: rowUserJourney.rootModule,
             projectRoot: rowUserJourney.projectRoot,
             steps: JSON.parse(rowUserJourney.steps),
+            expandedSteps: JSON.parse(rowUserJourney.expandedSteps),
             path: rowUserJourney.path !== undefined ? JSON.parse(rowUserJourney.path) : undefined,
             intent: rowUserJourney.intent,
             success: rowUserJourney.success

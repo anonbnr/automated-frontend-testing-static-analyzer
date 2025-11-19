@@ -1,8 +1,8 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/projectStorage.js';
-import * as componentStorage from '../../../adapters/storage/componentStorage.js';
-import * as widgetStorage from '../../../adapters/storage/widgetStorage.js';
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as componentStorage from '../../../adapters/storage/component-storage.js';
+import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
 import { WidgetInfo, RowWidgetInfo } from '../../../models/widget-info.js';
 import { makeWidgetsTree } from '../utils/widgets.js';
 import { StorageSession } from '../../../adapters/storageManager.js';

@@ -12,7 +12,7 @@ export interface ScenarioStepData {
 
 export interface Scenario {
 
-    userJourneyId: string
+    userJourneyId: string;
 
     name: string;
 

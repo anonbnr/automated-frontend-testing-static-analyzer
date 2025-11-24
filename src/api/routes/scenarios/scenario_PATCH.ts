@@ -1,50 +1,83 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
 import { projectSchemaPost } from '../schemas/projectSchema.js';
 import { formatZodErrors } from '../utils/schema.js';
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+import { serialize } from 'v8';
+import { scenarioSchemaPatch } from '../schemas/scenarioSchema.js';
 
 export default function buildRoute(router: Router) {
 
-    router.patch('/projects/:projectId/user-journeys/:journeyId/scenario', async (req: Request, resp: Response) => {
-        
+    router.patch('/projects/:projectId/user-journeys/:journeyId/scenarios/:scenarioId', async (req: Request, resp: Response) => {
         let storageSession: StorageSession | undefined;
+
+        const projectId = req.params.projectId;
+        const userJourneyId = req.params.journeyId;
+        const scenarioId = req.params.scenarioId;
 
         const {
             name,
             description,
             editedBy,
-            startRoutePath,
-            startComponentPath,
             tags,
             status,
-            coverage,
             stepsData,
         } = req.body;
+
+        const parseResult = scenarioSchemaPatch.safeParse({name, description, editedBy, tags, status, stepsData});
+        if (!parseResult.success) { 
+            return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
+        }
         
-
-        // const parseResult = projectSchemaPost.safeParse({name, description, projectRoot, url});
-        // if (!parseResult.success) { 
-        //     return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
-        // }
-
         try {
             storageSession = await storageManager.getSession();
 
-            const results = await scenarioStorage.save
-            if (results === undefined)
-                return resp.status(500).json({ error: 'Failed to post project' });
+            const project = await projectStorage.getById(projectId, storageSession);
+            if (project === undefined) {
+                return resp.status(404).json({ error: "project not found" });
+            }
+
+            const userJourney = await userJourneyStorage.getById(projectId, userJourneyId, storageSession);
+            if (userJourney === undefined) {
+                return resp.status(404).json({ error: "user-journey not found" });
+            }
             
-            return resp.status(200).json();
+            const scenario = await scenarioStorage.getById(projectId, userJourneyId, Math.trunc(Number(scenarioId)), storageSession);
+            if (scenario === undefined) {
+                return resp.status(404).json({ error: "scenario not found" });
+            }
+            
+            const newStepsData = scenario.stepsData;
+            for (const stepData of stepsData) {
+                const {index, ...newStep} = stepData;
+                Object.assign(newStepsData[index], newStep);
+            }
+
+            const data = {
+                name,
+                description,
+                editedBy,
+                tags: JSON.stringify(tags),
+                status,
+                stepsData: JSON.stringify(newStepsData),
+            }
+
+            const result = await scenarioStorage.update(projectId, userJourneyId, Math.trunc(Number(scenarioId)), data, storageSession);
+            if (result === undefined) {
+                return resp.status(500).json({ error: 'Failed to patch scenario' });
+            }
+
+            return resp.status(204).json();
 
         } catch (err: any) {
-            logger.error("[POST /projects] Fatal error: %o", err);
+            logger.error("[PATCH /projects/:projectId/user-journeys/:journeyId/scenarios/:scenarioId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to post project' });
+                .json({ error: err.message || 'Failed to patch scenario' });
         } finally {
             storageSession?.ends();
         }

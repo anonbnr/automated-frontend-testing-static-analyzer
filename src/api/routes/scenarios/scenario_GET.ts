@@ -33,7 +33,7 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json({ error: "user-journey not found" });
             }
             
-            const scenario = await scenarioStorage.getById(projectId, userJourneyId, Number(scenarioId), storageSession);
+            const scenario = await scenarioStorage.getById(projectId, userJourneyId, Math.trunc(Number(scenarioId)), storageSession);
             if (scenario === undefined) {
                 return resp.status(404).json({ error: "scenario not found" });
             }

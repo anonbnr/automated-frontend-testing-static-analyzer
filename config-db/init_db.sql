@@ -209,12 +209,12 @@ CREATE TABLE workflows (
 
 CREATE TABLE workflows_scenarios (
     workflowId      INT            NOT NULL,
-    testScenarioId  INT            NOT NULL,
+    scenarioId      INT            NOT NULL,
     `order`         SMALLINT       NOT NULL,
     inserted_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (workflowId, testScenarioId),
+    PRIMARY KEY (workflowId, scenarioId),
     UNIQUE (workflowId, `order`),
     FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
-    FOREIGN KEY (testScenarioId) REFERENCES scenarios(id) ON DELETE CASCADE
+    FOREIGN KEY (scenarioId) REFERENCES scenarios(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

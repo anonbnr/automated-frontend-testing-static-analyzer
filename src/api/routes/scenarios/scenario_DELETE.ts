@@ -1,19 +1,15 @@
 import { Request, Response, Router } from 'express';
-
-import { makeWidgetsTree } from '../utils/widgets.js';
 import logger from '../../../logging/logger.js';
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
 
-
-// Auto-loaded function (in index.ts loadAndBuildRoutes()) for building route
 export default function buildRoute(router: Router) {
 
-    router.get('/projects/:projectId/user-journeys/:journeyId/scenarios', async (req: Request, resp: Response) => {
-
+    router.delete('/projects/:projectId/user-journeys/:journeyId/scenarios/:scenarioId', async (req: Request, resp: Response) => {
+        
         let storageSession: StorageSession | undefined;
 
         try {
@@ -21,6 +17,7 @@ export default function buildRoute(router: Router) {
 
             const projectId = req.params.projectId;
             const userJourneyId = req.params.journeyId;
+            const scenarioId = req.params.scenarioId;
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
@@ -32,13 +29,23 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json({ error: "user-journey not found" });
             }
             
-            const scenarios = await scenarioStorage.getByUserJourney(projectId, userJourneyId, storageSession);
-
-            return resp.json(scenarios);
+            const scenario = await scenarioStorage.getById(projectId, userJourneyId, Math.trunc(Number(scenarioId)), storageSession);
+            if (scenario === undefined) {
+                return resp.status(404).json({ error: "scenario not found" });
+            }
+            
+            const results = await scenarioStorage.deleteById(projectId, userJourneyId, Math.trunc(Number(scenarioId)), storageSession);
+            if (results === undefined) {
+                return resp.status(500).json({ error: 'Failed to delete scenario' });
+            }
+            
+            return resp.status(204).json();
 
         } catch (err: any) {
-            logger.error("[GET /project/:projectId/user-journeys/:journeyId/scenarios] Fatal error: %o", err);
-            return resp.status(500).json({ error: err.message || 'Failed to get scenarios' });
+            logger.error("[DELETE /projects/:projectId/user-journeys/:journeyId/scenarios] Fatal error: %o", err);
+            return resp
+                .status(500)
+                .json({ error: err.message || 'Failed to delete scenario' });
         } finally {
             storageSession?.ends();
         }

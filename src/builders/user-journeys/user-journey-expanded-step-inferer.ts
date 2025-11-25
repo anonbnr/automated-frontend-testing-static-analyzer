@@ -269,15 +269,29 @@ function toBackendTarget(id: string): StageTarget {
 }
 
 function selectorHintFor(widget: WidgetInfo): string | undefined {
-    const a = widget.attributes || {};
+    const attributes = widget.attributes || {};
     // highest-signal first
-    if (a['data-e2e']) return `[data-e2e="${a['data-e2e']}"]`;
-    if (a['id']) return `#${a['id']}`;
-    if (a['formControlName']) return `[formControlName="${a['formControlName']}"]`;
-    if (a['name']) return `[name="${a['name']}"]`;
-    if (a['aria-label']) return `[aria-label="${a['aria-label']}"]`;
-    if (a['role']) return `[role="${a['role']}"]`;
+    if (attributes['data-e2e'])
+        return `[data-e2e="${attributes['data-e2e']}"]`;
+    
+    if (attributes['id'])
+        return `#${attributes['id']}`;
+    
+    if (attributes['formControlName'])
+        return `[formControlName="${attributes['formControlName']}"]`;
+    
+    if (attributes['name'])
+        return `[name="${attributes['name']}"]`;
+    
+    if (attributes['aria-label'])
+        return `[aria-label="${attributes['aria-label']}"]`;
+    
+    if (attributes['role'])
+        return `[role="${attributes['role']}"]`;
+    
     // material-ish fallbacks
-    if (a['matTooltip']) return `[matTooltip="${a['matTooltip']}"]`;
+    if (attributes['matTooltip'])
+        return `[matTooltip="${attributes['matTooltip']}"]`;
+    
     return undefined;
 }

@@ -1,15 +1,15 @@
 /**
  * Adapter for managing storage of the route roles computed during the analysis of the project code.
  */
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 
-import dbPool from "../../db/connection.js";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
-import { ComponentInfo, RowComponentInfo } from '../../models/component-info.js';
-import { ComponentRouteRole, rowRouteRoles, RouteRoles } from '../../models/route-info.js';
 import { StorageSession } from '../storageManager.js';
+
+import { ComponentRouteRole, rowRouteRoles, RouteRoles } from '../../models/route-info.js';
+
 
 export async function save(projectId : string, roles: Record<ComponentRouteRole, string[]>, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();

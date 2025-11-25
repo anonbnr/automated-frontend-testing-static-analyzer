@@ -1,13 +1,13 @@
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
-import dbPool from "../../db/connection.js";
 import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
+
+import { StorageSession } from '../storageManager.js';
 
 import { RowScenario, Scenario } from '../../models/scenarios/scenarios-info.js';
-import { RowUserJourney } from '../../models/user-journeys/user-journey-info.js';
-import { StorageSession } from '../storageManager.js';
 
 
 export async function save(projectId : string, userJourneyId: string, scenario : Scenario, storageSession: StorageSession) {

@@ -1,11 +1,11 @@
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
-import dbPool from "../../db/connection.js";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
-import { ModuleInfo, RowModuleInfo } from '../../models/module-info.js';
 import { StorageSession } from '../storageManager.js';
+
+import { ModuleInfo, RowModuleInfo } from '../../models/module-info.js';
 
 
 export async function save(projectId: string, module: ModuleInfo, storageSession: StorageSession) {

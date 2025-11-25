@@ -15,6 +15,7 @@ import express, { Express, Request, Response } from 'express';
 import logger from '../logging/logger.js';
 import { env } from './env.js';
 import { corsMiddleware, errorHandler, jsonBodyParser } from './middleware.js';
+import {Builder, Browser} from 'selenium-webdriver';
 
 
 import { Router } from 'express';
@@ -22,6 +23,8 @@ import fs from 'fs';
 import path from 'path';
 
 
+
+// const driver = await new Builder().forBrowser(Browser.CHROME).build();
 
 const app: Express = express();
 

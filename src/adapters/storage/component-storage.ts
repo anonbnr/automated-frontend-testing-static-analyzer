@@ -1,11 +1,15 @@
+/**
+ * Adapter for managing storage of the components.
+ */
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
-import dbPool from "../../db/connection.js";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
-import { ComponentInfo, RowComponentInfo } from '../../models/component-info.js';
 import { StorageSession } from '../storageManager.js';
+
+import { ComponentInfo, RowComponentInfo } from '../../models/component-info.js';
+
 
 export async function save(projectId : string, component : ComponentInfo, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();

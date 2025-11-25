@@ -1,8 +1,11 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -20,7 +23,7 @@ export default function buildRoute(router: Router) {
             logger.error("[GET /projects] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get projects' });
+                .json(err.message || 'Failed to get projects');
         } finally {
             storageSession?.ends;
         }

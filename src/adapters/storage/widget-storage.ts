@@ -1,11 +1,12 @@
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
-import dbPool from "../../db/connection.js";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
-import { RowWidgetInfo, WidgetInfo } from '../../models/widget-info.js';
 import { StorageSession } from '../storageManager.js';
+
+import { RowWidgetInfo, WidgetInfo } from '../../models/widget-info.js';
+
 
 export async function save(projectId : string, widget : WidgetInfo, componentSelector : string, storageSession: StorageSession, parentId? : string) {
     const dbConnection: PoolConnection = storageSession.getConnector();

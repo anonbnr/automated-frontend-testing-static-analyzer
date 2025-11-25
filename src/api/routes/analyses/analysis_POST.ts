@@ -1,25 +1,26 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
 import { resolveTsConfig } from '../../utils.js';
+
 import { StaticAnalyzer } from '../../../orchestrators/static-analyzer.js';
-//import { getNavigationGraph, setNavigationGraph } from '../../../adapters/appCache.js';
+import { UserJourneyRegistryBuilder } from '../../../builders/user-journeys/user-journey-registry-builder.js';
+import { WidgetInfo } from '../../../models/widget-info.js';
+import { inferExpandedSteps } from '../../../builders/user-journeys/user-journey-expanded-step-inferer.js';
+import { flattenWidgets } from '../utils/widgets.js';
+
+import { StorageSession } from '../../../adapters/storageManager.js';
+import * as storageManager from '../../../adapters/storageManager.js';
+
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import * as moduleStorage from '../../../adapters/storage/module-storage.js';
 import * as componentStorage from '../../../adapters/storage/component-storage.js';
+import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 import * as graphStorage from '../../../adapters/storage/graph-storage.js';
 import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
 import * as componentRouteStorage from '../../../adapters/storage/component-route-storage.js';
 import * as redirectRouteStorage from '../../../adapters/storage/redirect-route-storage.js';
 import * as routeRoleStorage from '../../../adapters/storage/route-role-storage.js';
-import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
-import { AnalysisProject } from '../../../models/project-info.js';
-import { UserJourneyRegistryBuilder } from '../../../builders/user-journeys/user-journey-registry-builder.js';
-import { StorageSession } from '../../../adapters/storageManager.js';
-import * as storageManager from '../../../adapters/storageManager.js';
-import { WidgetInfo } from '../../../models/widget-info.js';
-import { ComponentInfo } from '../../../models/component-info.js';
-import { inferExpandedSteps } from '../../../builders/user-journeys/user-journey-expanded-step-inferer.js';
-import { flattenWidgets } from '../utils/widgets.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -64,8 +65,6 @@ export default function buildRoute(router: Router) {
             await storageSession.commit();
 
             const analyzer = new StaticAnalyzer(tsConfig);
-
-            // Check cache to avoid redundant analysis
 
             const graph = await analyzer.analyze();
             const modules = analyzer.modRegistry.modules;

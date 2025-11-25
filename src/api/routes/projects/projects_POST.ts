@@ -1,10 +1,14 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import { projectSchemaPost } from '../schemas/projectSchema.js';
+
 import { formatZodErrors } from '../utils/schema.js';
+import { projectSchemaPost } from '../schemas/projectSchema.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -16,7 +20,7 @@ export default function buildRoute(router: Router) {
 
         const parseResult = projectSchemaPost.safeParse({name, description, projectRoot, url});
         if (!parseResult.success) { 
-            return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
+            return resp.status(400).json(formatZodErrors(parseResult.error));
         }
 
         try {
@@ -24,7 +28,7 @@ export default function buildRoute(router: Router) {
 
             const results = await projectStorage.save(name, description, projectRoot, url, storageSession);
             if (results === undefined)
-                return resp.status(500).json({ error: 'Failed to post project' });
+                return resp.status(500).json('Failed to post project');
             
             return resp.status(200).json({id: results});
 
@@ -32,7 +36,7 @@ export default function buildRoute(router: Router) {
             logger.error("[POST /projects] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to post project' });
+                .json(err.message || 'Failed to post project');
         } finally {
             storageSession?.ends();
         }

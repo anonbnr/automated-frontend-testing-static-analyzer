@@ -1,15 +1,15 @@
 /**
  * Adapter for managing storage of the component routes.
  */
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
-import dbPool from "../../db/connection.js";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
-import { ComponentRoute, RowComponentRoute } from '../../models/route-info.js';
-import { union } from 'zod';
 import { StorageSession } from '../storageManager.js';
+
+import { ComponentRoute, RowComponentRoute } from '../../models/route-info.js';
+
 
 export async function save(projectId : string, componentRoute : ComponentRoute, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();
@@ -74,6 +74,43 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 
     } catch(e) {
         console.log("Error: componentRouteStorage.getAll: ", e);
+        throw e;
+    }
+}
+
+export async function getById(projectId: string, id: string, storageSession: StorageSession): Promise<ComponentRoute | undefined> {
+    let dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {        
+        const [results] = await dbConnection.query<RowComponentRoute[]>(
+            `SELECT route, module, component, loadChildren, loadComponent, pathMatch, canActivate, canActivateChild, canLoad, resolve, data
+            FROM component_routes
+            WHERE projectId=? AND route=?`,
+            [projectId, id]
+        );
+
+        if (results.length === 0)
+            return undefined;
+
+        const result = results[0];
+
+        const componentRoute = {
+                route: result.route,
+                module: result.module,
+                component: result.component,
+                loadChildren: result.loadChildren,
+                loadComponent: result.loadComponent,
+                pathMatch: result.pathMatch,
+                canActivate: result.canActivate !== undefined ? JSON.parse(result.canActivate) : undefined,
+                canActivateChild: result.canActivateChild !== undefined ? JSON.parse(result.canActivateChild) : undefined,
+                canLoad: result.canLoad !== undefined ? JSON.parse(result.canLoad) : undefined,
+                resolve: result.resolve !== undefined ? JSON.parse(result.resolve) : undefined,
+                data: result.data !== undefined ? JSON.parse(result.data) : undefined
+        };
+
+        return componentRoute;
+    } catch(e) {
+        console.log("Error: componentRouteStorage.getById: ", e);
         throw e;
     }
 }

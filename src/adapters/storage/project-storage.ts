@@ -1,12 +1,16 @@
-import dbPool from "../../db/connection.js";
-import { Pool, PoolConnection } from 'mysql2/promise';
-import { AnalysisProject } from "../../models/project-info.js";
-import { ResultSetHeader } from "mysql2";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import { patternUnion } from "../utils/sqlFragments.js";
 import logger from "../../logging/logger.js";
 import { v4 as uuidv4 } from "uuid";
+
+import { PoolConnection } from 'mysql2/promise';
+import { ResultSetHeader } from "mysql2";
+
+import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
+import { patternUnion } from "../utils/sqlFragments.js";
+
 import { StorageSession } from "../storageManager.js";
+
+import { AnalysisProject } from "../../models/project-info.js";
+
 
 export async function save(name : string, description : string, projectRoot : string, url : string, storageSession: StorageSession) {
     let dbConnection: PoolConnection = storageSession.getConnector();

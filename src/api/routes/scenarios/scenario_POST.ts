@@ -1,18 +1,22 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
+
+import { formatZodErrors } from '../utils/schema.js';
+import { scenarioSchemaPost } from '../schemas/scenarioSchema.js';
+
+import { Scenario } from '../../../models/scenarios/scenarios-info.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
 import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
-import { projectSchemaPost } from '../schemas/projectSchema.js';
-import { formatZodErrors } from '../utils/schema.js';
-import { Scenario, ScenarioStepData } from '../../../models/scenarios/scenarios-info.js';
-import { scenarioSchemaPost } from '../schemas/scenarioSchema.js';
+import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
+
 
 export default function buildRoute(router: Router) {
 
-    router.post('/projects/:projectId/user-journeys/:journeyId/scenario', async (req: Request, resp: Response) => {
+    router.post('/projects/:projectId/user-journeys/:journeyId/scenarios', async (req: Request, resp: Response) => {
         
         let storageSession: StorageSession | undefined;
 
@@ -24,7 +28,6 @@ export default function buildRoute(router: Router) {
             description
         } = req.body;
         
-
         const parseResult = scenarioSchemaPost.safeParse({name, description});
         if (!parseResult.success) { 
             return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
@@ -35,12 +38,12 @@ export default function buildRoute(router: Router) {
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
 
             const userJourney = await userJourneyStorage.getById(projectId, journeyId, storageSession);
             if (userJourney === undefined) {
-                return resp.status(404).json({ error: "user-journey not found" });
+                return resp.status(404).json("user-journey not found");
             }
             
             const scenario: Scenario = {
@@ -57,7 +60,7 @@ export default function buildRoute(router: Router) {
 
             const id = await scenarioStorage.save(projectId, journeyId, scenario, storageSession);
             if (id === undefined)
-                return resp.status(500).json({ error: 'Failed to post scenario' });
+                return resp.status(500).json('Failed to post scenario');
 
             return resp.status(200).json(id);
 
@@ -65,7 +68,7 @@ export default function buildRoute(router: Router) {
             logger.error("[POST /projects/:projectId/user-journeys/:journeyId/scenario'] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to post scenario' });
+                .json(err.message || 'Failed to post scenario');
         } finally {
             storageSession?.ends();
         }

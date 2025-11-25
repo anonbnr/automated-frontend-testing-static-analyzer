@@ -1,12 +1,15 @@
+/**
+ * Adapter for managing storage of the graph.
+ */
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
-import dbPool from "../../db/connection.js";
-import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
-import { AppNavigation } from '../../llm/schemas.js';
-import { RowAppNavigation } from '../../models/navigation-graph.js';
 import { StorageSession } from '../storageManager.js';
+
+import { AppNavigation, RowAppNavigation } from '../../models/navigation-graph.js';
+
 
 export async function save(projectId: string, graph: AppNavigation, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();

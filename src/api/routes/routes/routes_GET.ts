@@ -1,13 +1,16 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
+
+import { RouteRoles } from '../../../models/route-info.js';
+
+import { StorageSession } from '../../../adapters/storageManager.js';
+import * as storageManager from '../../../adapters/storageManager.js';
+
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import * as componentRouteStorage from '../../../adapters/storage/component-route-storage.js';
 import * as redirectRouteStorage from '../../../adapters/storage/redirect-route-storage.js';
 import * as routeRoleStorage from '../../../adapters/storage/route-role-storage.js';
-import { ComponentRouteMap, RouteMap, RouteRoles } from '../../../models/route-info.js';
-import { ComponentInfo } from '../../../models/component-info.js';
-import { StorageSession } from '../../../adapters/storageManager.js';
-import * as storageManager from '../../../adapters/storageManager.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -52,7 +55,7 @@ export default function buildRoute(router: Router) {
             logger.error("[GET /project/:projectId/routes] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get routes' });
+                .json(err.message || 'Failed to get routes');
         } finally {
             storageSession?.ends();
         }

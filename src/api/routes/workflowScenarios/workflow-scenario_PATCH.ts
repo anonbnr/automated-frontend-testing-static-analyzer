@@ -1,15 +1,17 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import { serialize } from 'v8';
+
 import { formatZodErrors } from '../utils/schema.js';
+import { scenarioSchemaPatch } from '../schemas/scenarioSchema.js';
 
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
 import * as workflowStorage from '../../../adapters/storage/workflow-storage.js';
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
 import * as workflowScenarioStorage from '../../../adapters/storage/workflow-scenario-storage.js';
-import { scenarioSchemaPatch } from '../schemas/scenarioSchema.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -26,7 +28,7 @@ export default function buildRoute(router: Router) {
 
         const parseResult = scenarioSchemaPatch.safeParse({order});
         if (!parseResult.success) { 
-            return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
+            return resp.status(400).json(formatZodErrors(parseResult.error));
         }
         
         try {
@@ -35,23 +37,23 @@ export default function buildRoute(router: Router) {
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
             
             const workflow = await workflowStorage.getById(projectId, workflowId, storageSession);
             if (workflow === undefined) {
-                return resp.status(404).json({ error: "workflow not found" });
+                return resp.status(404).json("workflow not found");
             }
 
             const scenario = await scenarioStorage.get(projectId, workflowId, storageSession);
             if (scenario === undefined) {
-                return resp.status(404).json({ error: "scenario not found" });
+                return resp.status(404).json("scenario not found");
             }
 
             const result = await workflowScenarioStorage.update(workflowId, scenarioId, order, storageSession);
             if (result === false) {
                 storageSession.rollback();
-                return resp.status(500).json({ error: 'Failed to patch workflow-scenario' });
+                return resp.status(500).json('Failed to patch workflow-scenario');
             }
 
             storageSession.commit();
@@ -63,7 +65,7 @@ export default function buildRoute(router: Router) {
             logger.error("[PATCH /projects/:projectId/workflows/:workflowId/scenarios/:scenarioId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to patch workflow-scenario' });
+                .json(err.message || 'Failed to patch workflow-scenario');
         } finally {
             storageSession?.ends();
         }

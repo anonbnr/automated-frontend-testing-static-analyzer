@@ -1,8 +1,11 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+
 
 export default function buildRoute(router: Router) {
     
@@ -16,7 +19,7 @@ export default function buildRoute(router: Router) {
 
             let results = await projectStorage.getById(projectId, storageSession);
             if (results === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
             
             return resp.json(results);
@@ -25,7 +28,7 @@ export default function buildRoute(router: Router) {
             logger.error("[GET /project/:projectId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get project' });
+                .json(err.message || 'Failed to get project');
         } finally {
             storageSession?.ends();
         }

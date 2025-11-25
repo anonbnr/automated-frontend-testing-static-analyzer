@@ -1,9 +1,12 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import * as graphStorage from '../../../adapters/storage/graph-storage.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as graphStorage from '../../../adapters/storage/graph-storage.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -18,12 +21,12 @@ export default function buildRoute(router: Router) {
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
 
             const graphs = await graphStorage.getAll(projectId, storageSession);
             if (graphs === undefined ) {
-                return resp.status(404).json({ error: "graph not found" });
+                return resp.status(404).json("graph not found");
             }
             
             return resp.json(graphs);
@@ -32,7 +35,7 @@ export default function buildRoute(router: Router) {
             logger.error("[GET /project/:projectId/graph] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get graphs' });
+                .json(err.message || 'Failed to get graphs');
         } finally {
             storageSession?.ends();
         }

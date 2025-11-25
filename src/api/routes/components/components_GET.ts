@@ -1,15 +1,18 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import * as componentStorage from '../../../adapters/storage/component-storage.js';
-import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
-import { WidgetInfo, RowWidgetInfo } from '../../../models/widget-info.js';
+
+import { WidgetInfo } from '../../../models/widget-info.js';
 import { makeWidgetsTree } from '../utils/widgets.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
 
-export default function buildRoute(router: Router) {
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as componentStorage from '../../../adapters/storage/component-storage.js';
+import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
 
+
+export default function buildRoute(router: Router) {
 
     router.get('/projects/:projectId/components', async (req: Request, resp: Response) => {
 
@@ -42,7 +45,7 @@ export default function buildRoute(router: Router) {
             logger.error("[GET /project/:projectId/components] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to get components' });
+                .json(err.message || 'Failed to get components');
         } finally {
             storageSession?.ends();
         }

@@ -1,10 +1,14 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import { projectSchemaPatch } from '../schemas/projectSchema.js';
+
 import { formatZodErrors } from '../utils/schema.js';
+import { projectSchemaPatch } from '../schemas/projectSchema.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -21,7 +25,7 @@ export default function buildRoute(router: Router) {
 
             const checkProjectId = await projectStorage.getById(projectId, storageSession);
             if (checkProjectId === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
 
             if (!name && !description && !projectRoot && !url) {
@@ -30,12 +34,12 @@ export default function buildRoute(router: Router) {
 
             const parseResult = projectSchemaPatch.safeParse({name, description, projectRoot, url});
             if (!parseResult.success) { 
-                return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
+                return resp.status(400).json(formatZodErrors(parseResult.error));
             }
 
             const results = await projectStorage.update(projectId, name, description, projectRoot, url, storageSession);
             if (results === undefined) {
-                return resp.status(500).json({ error: 'Failed to patch project' });
+                return resp.status(500).json('Failed to patch project');
             }
 
             return resp.status(204).json();
@@ -44,7 +48,7 @@ export default function buildRoute(router: Router) {
             logger.error("[PATCH /project/:projectId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to patch project' });
+                .json(err.message || 'Failed to patch project');
         } finally {
             storageSession?.ends();
         }

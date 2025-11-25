@@ -1,12 +1,15 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
-import * as workflowStorage from '../../../adapters/storage/workflow-storage.js';
+
 import { formatZodErrors } from '../utils/schema.js';
+import { scenarioSchemaPatch } from '../schemas/scenarioSchema.js';
+
 import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
-import { serialize } from 'v8';
-import { scenarioSchemaPatch } from '../schemas/scenarioSchema.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as workflowStorage from '../../../adapters/storage/workflow-storage.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -23,7 +26,7 @@ export default function buildRoute(router: Router) {
 
         const parseResult = scenarioSchemaPatch.safeParse({name, description});
         if (!parseResult.success) { 
-            return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
+            return resp.status(400).json(formatZodErrors(parseResult.error));
         }
         
         try {
@@ -31,12 +34,12 @@ export default function buildRoute(router: Router) {
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
             
             const workflow = await workflowStorage.getById(projectId, Math.trunc(Number(workflowId)), storageSession);
             if (workflow === undefined) {
-                return resp.status(404).json({ error: "workflow not found" });
+                return resp.status(404).json("workflow not found");
             }
 
             const data = {
@@ -46,7 +49,7 @@ export default function buildRoute(router: Router) {
 
             const result = await workflowStorage.update(projectId, Math.trunc(Number(workflowId)), data, storageSession);
             if (result === undefined) {
-                return resp.status(500).json({ error: 'Failed to patch workflow' });
+                return resp.status(500).json('Failed to patch workflow');
             }
 
             return resp.status(204).json();
@@ -55,7 +58,7 @@ export default function buildRoute(router: Router) {
             logger.error("[PATCH /projects/:projectId/workflows/:workflowId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to patch workflow' });
+                .json(err.message || 'Failed to patch workflow');
         } finally {
             storageSession?.ends();
         }

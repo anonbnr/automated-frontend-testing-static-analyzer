@@ -1,16 +1,17 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
+
+import { StorageSession } from '../../../adapters/storageManager.js';
+import * as storageManager from '../../../adapters/storageManager.js';
+
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import * as moduleStorage from '../../../adapters/storage/module-storage.js';
 import * as componentStorage from '../../../adapters/storage/component-storage.js';
 import * as graphStorage from '../../../adapters/storage/graph-storage.js';
-import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
-import * as componentRouteStorage from '../../../adapters/storage/component-route-storage.js';
 import * as redirectRouteStorage from '../../../adapters/storage/redirect-route-storage.js';
 import * as routeRoleStorage from '../../../adapters/storage/route-role-storage.js';
 import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
-import { StorageSession } from '../../../adapters/storageManager.js';
-import * as storageManager from '../../../adapters/storageManager.js';
+
 
 export default function buildRoute(router: Router) {
 
@@ -25,7 +26,7 @@ export default function buildRoute(router: Router) {
 
             const checkProjectId = await projectStorage.getById(projectId, storageSession);
             if (checkProjectId === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
             
             await storageSession.beginTransaction();
@@ -49,7 +50,7 @@ export default function buildRoute(router: Router) {
             logger.error("[DELETE /project/:projectId/analysis] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json({ error: err.message || 'Failed to delete analysis' });
+                .json(err.message || 'Failed to delete analysis');
         } finally {
             storageSession?.ends();
         }

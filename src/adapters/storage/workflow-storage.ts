@@ -1,11 +1,14 @@
+import logger from "../../logging/logger.js";
+
 import { PoolConnection } from 'mysql2/promise';
 import { ResultSetHeader } from "mysql2";
 
 import { sqlUpdateFragmentFromObject } from "../utils/sqlFragments.js";
-import logger from "../../logging/logger.js";
+
+import { StorageSession } from '../storageManager.js';
 
 import { RowWorkflow, Workflow } from '../../models/workflows-info.js';
-import { StorageSession } from '../storageManager.js';
+
 
 export async function save(projectId : string, workflow : Workflow, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();

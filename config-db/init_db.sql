@@ -183,6 +183,7 @@ CREATE TABLE scenarios (
     status                  VARCHAR(32),
     coverage                JSON,
     stepsData               JSON,
+    expectedResult          JSON,
     inserted_at             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
@@ -217,4 +218,20 @@ CREATE TABLE workflows_scenarios (
     UNIQUE (workflowId, `order`),
     FOREIGN KEY (workflowId) REFERENCES workflows(id) ON DELETE CASCADE,
     FOREIGN KEY (scenarioId) REFERENCES scenarios(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- =====================================================================
+--  WORKFLOWS_RESULTS
+-- =====================================================================
+
+CREATE TABLE workflows_results (
+    workflowId      INT            NOT NULL,
+    scenarioId      INT            NOT NULL,
+    success         BOOLEAN        NOT NULL,
+    message         VARCHAR(1024),
+    screenshot      TEXT,
+    inserted_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (workflowId, scenarioId),
+    FOREIGN KEY (workflowId, scenarioId) REFERENCES workflows_scenarios(workflowId, scenarioId) ON DELETE CASCADE
 ) ENGINE=InnoDB;

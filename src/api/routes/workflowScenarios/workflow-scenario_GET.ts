@@ -28,12 +28,12 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json("project not found");
             }
 
-            const workflow = await workflowStorage.getById(projectId, Math.trunc(Number(workflowId)), storageSession);
+            const workflow = await workflowStorage.getById(projectId, workflowId, storageSession);
             if (workflow === undefined) {
                 return resp.status(404).json("workflow not found");
             }
 
-            const scenario = await scenarioStorage.get(projectId, Math.trunc(Number(scenarioId)), storageSession);
+            const scenario = await scenarioStorage.get(projectId, scenarioId, storageSession);
             if (scenario === undefined) {
                 return resp.status(404).json("scenario not found");
             }

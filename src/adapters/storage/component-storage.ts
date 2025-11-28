@@ -27,7 +27,7 @@ export async function save(projectId : string, component : ComponentInfo, storag
         );
         return true;
     } catch(e) {
-        logger.error("Error: AnalysisProject.registry.save: ", e);
+        logger.error("Error: componentStorage.save: ", e);
         return false;
     }
 }
@@ -55,7 +55,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         }
         return components;
     } catch(e) {
-        console.log("Error: AnalysisProject.registry.getAll: ", e);
+        console.log("Error: componentStorage.getAll: ", e);
         throw e;
     }
 }

@@ -31,7 +31,7 @@ export default function buildRoute(router: Router) {
             
             const results = await workflowStorage.deleteById(projectId, Math.trunc(Number(workflowId)), storageSession);
             if (results === undefined) {
-                return resp.status(500).json('Failed to delete workflow');
+                return resp.status(500).json("Failed to delete workflow");
             }
             
             return resp.status(204).json();
@@ -40,7 +40,7 @@ export default function buildRoute(router: Router) {
             logger.error("[DELETE /projects/:projectId/workflows/:workflowId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json(err.message || 'Failed to delete workflow');
+                .json(err.message || "Failed to delete workflow");
         } finally {
             storageSession?.ends();
         }

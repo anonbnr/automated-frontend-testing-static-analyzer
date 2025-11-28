@@ -10,7 +10,7 @@ import { StorageSession } from '../storageManager.js';
 import { RowWorkflow, Workflow } from '../../models/workflows-info.js';
 
 
-export async function save(projectId : string, workflow : Workflow, storageSession: StorageSession) {
+export async function save(projectId: string, workflow: Workflow, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
@@ -24,7 +24,7 @@ export async function save(projectId : string, workflow : Workflow, storageSessi
             ]
         );
         return result.insertId;
-    } catch(e) {
+    } catch (e) {
         logger.error("Error: WorkflowStorage.save: ", e);
         return undefined;
     }
@@ -41,7 +41,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         );
 
         const workflows: Workflow[] = [];
-        
+
         for (const result of results) {
             workflows.push({
                 name: result.name,
@@ -51,7 +51,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         }
 
         return workflows;
-    } catch(e) {
+    } catch (e) {
         console.log("Error: workflowStorage.getAll: ", e);
         throw e;
     }
@@ -60,7 +60,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 export async function getById(projectId: string, id: number, storageSession: StorageSession): Promise<Workflow | undefined> {
     let dbConnection: PoolConnection = storageSession.getConnector();
 
-    try {        
+    try {
         const [results] = await dbConnection.query<RowWorkflow[]>(
             `SELECT id, name, description FROM workflows WHERE projectId=? AND id=?`,
             [projectId, id]
@@ -78,7 +78,7 @@ export async function getById(projectId: string, id: number, storageSession: Sto
         };
 
         return workflow;
-    } catch(e) {
+    } catch (e) {
         console.log("Error: workflowStorage.getById: ", e);
         throw e;
     }
@@ -87,15 +87,15 @@ export async function getById(projectId: string, id: number, storageSession: Sto
 export async function update(projectId: string, id: number, data: Record<string, unknown>, storageSession: StorageSession) {
     let dbConnection: PoolConnection = storageSession.getConnector();
 
-    try {  
-        const {sql, values} = sqlUpdateFragmentFromObject(data);
+    try {
+        const { sql, values } = sqlUpdateFragmentFromObject(data);
 
         const [result] = await dbConnection.query<ResultSetHeader>(
             `UPDATE workflows SET ${sql} WHERE projectId=? AND id=?`,
             [...values, projectId, id]
         );
         return result;
-    } catch(e) {
+    } catch (e) {
         console.log("Error: workflowStorage.update: ", e);
         return undefined;
     }
@@ -111,7 +111,7 @@ export async function deleteById(projectId: string, id: number, storageSession: 
             [projectId, id]
         );
         return result;
-    } catch(e) {
+    } catch (e) {
         console.log("Error: workflowStorage.deleteById: ", e);
         return undefined;
     }

@@ -27,7 +27,7 @@ export async function save(projectId: string, graph: AppNavigation, storageSessi
         );
         return true;
     } catch (e) {
-        logger.error("Error: AnalysisProject.registry.save: ", e);
+        logger.error("Error: graphStorage.save: ", e);
         return false;
     }
 }
@@ -58,7 +58,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         return graphs;
 
     } catch (e) {
-        console.log("Error: componentRouteStorage.getAll: ", e);
+        console.log("Error: graphStorage.getAll: ", e);
         throw e;
     }
 }
@@ -82,7 +82,7 @@ export async function get(projectId: string, storageSession: StorageSession): Pr
         }
         return graph;
     } catch (e) {
-        console.log("Error: componentRouteStorage.getAll: ", e);
+        console.log("Error: graphStorage.getAll: ", e);
         throw e;
     }
 }

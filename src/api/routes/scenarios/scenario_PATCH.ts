@@ -28,9 +28,10 @@ export default function buildRoute(router: Router) {
             tags,
             status,
             stepsData,
+            expectedResult,
         } = req.body;
 
-        const parseResult = scenarioSchemaPatch.safeParse({name, description, editedBy, tags, status, stepsData});
+        const parseResult = scenarioSchemaPatch.safeParse({name, description, editedBy, tags, status, stepsData, expectedResult});
         if (!parseResult.success) { 
             return resp.status(400).json({ error: formatZodErrors(parseResult.error) });
         }
@@ -52,11 +53,14 @@ export default function buildRoute(router: Router) {
             if (scenario === undefined) {
                 return resp.status(404).json("scenario not found");
             }
-            
-            const newStepsData = scenario.stepsData;
-            for (const stepData of stepsData) {
-                const {index, ...newStep} = stepData;
-                Object.assign(newStepsData[index], newStep);
+
+            let newStepsData = undefined;
+            if (stepsData) {
+                newStepsData = scenario.stepsData;
+                for (const stepData of stepsData) {
+                    const {index, ...newStep} = stepData;
+                    Object.assign(newStepsData[index], newStep);
+                }
             }
 
             const data = {
@@ -66,6 +70,7 @@ export default function buildRoute(router: Router) {
                 tags: JSON.stringify(tags),
                 status,
                 stepsData: JSON.stringify(newStepsData),
+                expectedResult: JSON.stringify(expectedResult)
             }
 
             const result = await scenarioStorage.update(projectId, userJourneyId, Math.trunc(Number(scenarioId)), data, storageSession);

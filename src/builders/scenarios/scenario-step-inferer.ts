@@ -25,8 +25,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { WidgetUtils } from "../../analyzers/template/widgets/widget-utils.js";
-import logger from "../../logging/logger.js";
-import { AppNavigation, GraphNode } from "../../models/navigation-graph.js";
 import { ScenarioStep, StageActionType, StageTarget } from "../../models/scenarios/scenario-steps.js";
 import { VIRTUAL_BACKEND } from "../../models/user-journeys/user-journey-constants.js";
 import { UserJourney, UserJourneyStep } from "../../models/user-journeys/user-journey-info.js";

@@ -46,7 +46,7 @@ export default function buildRoute(router: Router) {
 
             const id = await workflowStorage.save(projectId, workflow, storageSession);
             if (id === undefined)
-                return resp.status(500).json('Failed to post workflow');
+                return resp.status(500).json("Failed to post workflow");
 
             return resp.status(200).json(id);
 
@@ -54,7 +54,7 @@ export default function buildRoute(router: Router) {
             logger.error("[POST /projects/:projectId/workflows'] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json(err.message || 'Failed to post workflow');
+                .json(err.message || "Failed to post workflow");
         } finally {
             storageSession?.ends();
         }

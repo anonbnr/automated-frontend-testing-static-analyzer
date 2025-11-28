@@ -35,7 +35,7 @@ export default function buildRoute(router: Router) {
 
         } catch (err: any) {
             logger.error("[GET /project/:projectId/workflows/:workflowId] Fatal error: %o", err);
-            return resp.status(500).json(err.message || 'Failed to get workflows');
+            return resp.status(500).json(err.message || "Failed to get workflows");
         } finally {
             storageSession?.ends();
         }

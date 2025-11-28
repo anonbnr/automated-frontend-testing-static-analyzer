@@ -110,7 +110,7 @@ export async function getById(projectId: string, id: string, storageSession: Sto
 
         return userJourney;
     } catch(e) {
-        console.log("Error: projectStorage.getById: ", e);
+        console.log("Error: userJourneyStorage.getById: ", e);
         throw e;
     }
 }

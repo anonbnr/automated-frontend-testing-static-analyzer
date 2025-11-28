@@ -1,78 +1,26 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
-import { StorageSession } from '../../../adapters/storageManager.js';
-import * as storageManager from '../../../adapters/storageManager.js';
-import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 
 import { formatZodErrors } from '../utils/schema.js';
+
+import { StorageSession } from '../../../adapters/storageManager.js';
+import * as storageManager from '../../../adapters/storageManager.js';
+
+import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 import * as workflowStorage from '../../../adapters/storage/workflow-storage.js';
 import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
-import * as projectStorage from '../../../adapters/storage/project-storage.js';
 import * as workflowScenarioStorage from '../../../adapters/storage/workflow-scenario-storage.js';
-import { Scenario, ScenarioStepData } from '../../../models/scenarios/scenarios-info.js';
-import { workflowScenarioSchemaPatch, workflowScenarioSchemaPost } from '../schemas/workflow-scenario-schema.js';
-import { WorkflowScenario } from '../../../models/workflow-scenario-info.js';
+import * as workflowResultStorage from '../../../adapters/storage/workflow-result-storage.js';
+
 import { UserJourney } from '../../../models/user-journeys/user-journey-info.js';
+import { WorkflowScenario } from '../../../models/workflow-scenario-info.js';
 
-import path from 'path';
+import { workflowScenarioSchemaPost } from '../schemas/workflow-scenario-schema.js';
 
-import {Builder, Browser, By} from 'selenium-webdriver';
+import { executeSelenium } from '../../../adapters/selenium.js';
+import { WorkflowResult } from '../../../models/workflow-result.js';
 
-
-async function execute(scenario: Scenario, userJourney: UserJourney, url: string) {
-
-    if (!userJourney.expandedSteps)
-        return;
-    
-    const route = path.join(url, userJourney.expandedSteps[0].target.id);
-
-    const driver = await new Builder().forBrowser(Browser.CHROME).build();
-    
-    driver.get(route);
-    
-    const steps = userJourney.expandedSteps;
-    const stepsData = scenario.stepsData;
-    const skipSubmit = true;
-    try {
-
-        for (let i = 1; i < steps.length; i++) {
-            const step = steps[i];
-            if (step.target.type === "widget") {
-                if (step.meta) {
-                    // console.log("");
-                    // console.log("Widget: " + step.target.id);
-
-                    
-                    const selector: string = step.meta["selectorHint"]; 
-                    // console.log("Selector = " + selector);
-                    // console.log("   ActionType=" + step.actionType);
-                    
-                    if (step.actionType === "input" ) {
-                        
-                        const element = await driver.findElement(By.css(selector));
-                        // const tagName: string = await element.getTagName();
-                        // console.log("   tagName=" + tagName);
-
-                        const type: string = await element.getAttribute("type");
-                        // console.log("       type=" + type);
-                        await element.sendKeys("test");
-                        
-                    }
-                    else if (step.actionType === "submit") {
-                        // submit
-                    }
-                    else if (step.actionType === "click") {
-                        const element = await driver.findElement(By.css(selector));
-                        await element.click();
-                    }
-                }
-            }
-        }
-    }
-    catch (err: any) {
-        console.log("Error: " + err.message)
-    }
-}
 
 export default function buildRoute(router: Router) {
 
@@ -94,6 +42,7 @@ export default function buildRoute(router: Router) {
 
         try {
             storageSession = await storageManager.getSession();
+            storageSession.beginTransaction();
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
@@ -101,17 +50,26 @@ export default function buildRoute(router: Router) {
             }
 
             const workflow = await workflowStorage.getById(projectId, workflowId, storageSession);
-            if (workflow === undefined) {
+            if (workflow === undefined || workflow.id === undefined) {
                 return resp.status(404).json("workflow not found");
             }
 
             const userJourneyMap: Map<string, UserJourney> = new Map();
 
             const workflowScenarios: WorkflowScenario[] = await workflowScenarioStorage.getAll(workflowId, storageSession)
+            let workflowResults: WorkflowResult[] = await workflowResultStorage.getAll(workflowId, storageSession);
+            if (workflowResults.length !== 0) {
+                for (const workflowResult of workflowResults) {
+                    await workflowResultStorage.deleteById(workflowResult.workflowId, workflowResult.scenarioId,  storageSession);
+                }
+                workflowResults = [];
+            }
+            
             for (const workflowScenario of workflowScenarios) {
                 const scenario = await scenarioStorage.get(projectId, workflowScenario.scenarioId, storageSession);
-                if (!scenario) {
-                    throw new Error();
+                if (scenario === undefined || scenario.id === undefined) {
+                    storageSession.rollback();
+                    return resp.status(404).json("scenario not found");
                 }
 
                 const userJourneyId = scenario.userJourneyId;
@@ -121,20 +79,38 @@ export default function buildRoute(router: Router) {
                 if (!userJourney) {
                     userJourney = await userJourneyStorage.getById(projectId, userJourneyId, storageSession);
                     if (!userJourney) {
-                        throw new Error();
+                        storageSession.rollback();
+                        return resp.status(404).json("userJourney not found");
                     }
 
                     userJourneyMap.set(userJourneyId, userJourney);
                 }
                 
-
-                execute(scenario, userJourney, project.url);
-                break;
+                try {
+                    const result = await executeSelenium(scenario, userJourney, project.url);
+                    if (result === true) {
+                        workflowResultStorage.save({
+                        workflowId: workflow.id,
+                        scenarioId: scenario.id,
+                        success: true,
+                    }, storageSession);
+                    }
+                } catch (err: any) {
+                    workflowResultStorage.save({
+                        workflowId: workflow.id,
+                        scenarioId: scenario.id,
+                        success: false,
+                        message: err.message
+                    }, storageSession);
+                }
+                
             }
-            const array = Array.from(userJourneyMap.entries());
-            return resp.json({array});
+
+            // TODO add a route to check workflow status url
+            return resp.status(202).json({message: "Workflow accepted for processing, can check execution status at the workflowStatusUrl", workfloStatusUrl: "url/:projectId/workflows/:workflowId/execution/status"});
 
         } catch (err: any) {
+            storageSession?.rollback();
             logger.error("[POST /projects/:projectId/workflows/:workflowId/execution'] Fatal error: %o", err);
             return resp
                 .status(500)

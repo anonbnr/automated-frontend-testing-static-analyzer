@@ -36,32 +36,13 @@ export async function save(projectId : string, userJourneyId: string, scenario :
     }
 }
 
-// CREATE TABLE scenarios (
-//     id                      INT AUTO_INCREMENT PRIMARY KEY,
-//     userJourneyId           VARCHAR(512)   NOT NULL,
-//     projectId               UUID           NOT NULL,
-//     name                    VARCHAR(128)   NOT NULL,
-//     description             TEXT,
-//     editedBy                VARCHAR(32)    NOT NULL,
-//     startRoutePath          VARCHAR(512)   NOT NULL,
-//     startComponentSelector  VARCHAR(128)   NOT NULL,
-//     tags                    JSON,
-//     status                  VARCHAR(32),
-//     coverage                JSON,
-//     stepsData               JSON,
-//     inserted_at             DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-//     updated_at              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-//     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE,
-//     FOREIGN KEY (userJourneyId) REFERENCES userjourneys(id) ON DELETE CASCADE
-// ) ENGINE=InnoDB;
-
 
 export async function getByUserJourney(projectId: string, userJourneyId: string, storageSession: StorageSession): Promise<Scenario[]> {
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
         const [results] = await dbConnection.query<RowScenario[]>(
-            `SELECT id, name, description, editedBy, tags, status, coverage, stepsData FROM scenarios WHERE projectId=? AND userJourneyId=?`,
+            `SELECT id, name, description, editedBy, tags, status, coverage, stepsData, expectedResult FROM scenarios WHERE projectId=? AND userJourneyId=?`,
             [projectId, userJourneyId]
         );
 
@@ -77,6 +58,7 @@ export async function getByUserJourney(projectId: string, userJourneyId: string,
                 status: result.status,
                 coverage: result.coverage,
                 stepsData: JSON.parse(result.stepsData),
+                expectedResult: JSON.parse(result.expectedResult),
                 id: result.id,
             });
         }
@@ -93,7 +75,7 @@ export async function getById(projectId: string, userJourneyId: string, id: numb
 
     try {        
         const [results] = await dbConnection.query<RowScenario[]>(
-            `SELECT id, name, description, editedBy, tags, status, coverage, stepsData FROM scenarios WHERE projectId=? AND userJourneyId=? AND id=?`,
+            `SELECT id, name, description, editedBy, tags, status, coverage, stepsData, expectedResult FROM scenarios WHERE projectId=? AND userJourneyId=? AND id=?`,
             [projectId, userJourneyId, id]
         );
 
@@ -111,6 +93,7 @@ export async function getById(projectId: string, userJourneyId: string, id: numb
             status: result.status,
             coverage: result.coverage,
             stepsData: JSON.parse(result.stepsData),
+            expectedResult: JSON.parse(result.expectedResult),
             id: result.id,
         };
 
@@ -126,7 +109,7 @@ export async function get(projectId: string, id: number, storageSession: Storage
 
     try {        
         const [results] = await dbConnection.query<RowScenario[]>(
-            `SELECT id, userJourneyId, name, description, editedBy, tags, status, coverage, stepsData FROM scenarios WHERE projectId=? AND id=?`,
+            `SELECT id, userJourneyId, name, description, editedBy, tags, status, coverage, stepsData, expectedResult FROM scenarios WHERE projectId=? AND id=?`,
             [projectId, id]
         );
 
@@ -144,6 +127,7 @@ export async function get(projectId: string, id: number, storageSession: Storage
             status: result.status,
             coverage: result.coverage,
             stepsData: JSON.parse(result.stepsData),
+            expectedResult: JSON.parse(result.expectedResult),
             id: result.id,
         };
 

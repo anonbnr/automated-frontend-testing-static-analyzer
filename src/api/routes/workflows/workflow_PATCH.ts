@@ -49,7 +49,7 @@ export default function buildRoute(router: Router) {
 
             const result = await workflowStorage.update(projectId, Math.trunc(Number(workflowId)), data, storageSession);
             if (result === undefined) {
-                return resp.status(500).json('Failed to patch workflow');
+                return resp.status(500).json("Failed to patch workflow");
             }
 
             return resp.status(204).json();
@@ -58,7 +58,7 @@ export default function buildRoute(router: Router) {
             logger.error("[PATCH /projects/:projectId/workflows/:workflowId] Fatal error: %o", err);
             return resp
                 .status(500)
-                .json(err.message || 'Failed to patch workflow');
+                .json(err.message || "Failed to patch workflow");
         } finally {
             storageSession?.ends();
         }

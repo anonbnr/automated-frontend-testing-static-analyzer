@@ -5,30 +5,45 @@ import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
 
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as userJourneyStorage from '../../../adapters/storage/user-journey-storage.js';
 import * as workflowStorage from '../../../adapters/storage/workflow-storage.js';
 import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js';
 import * as workflowScenarioStorage from '../../../adapters/storage/workflow-scenario-storage.js';
 
 
+import TtlCache from '../../../llm/cache.js';
+import { makeLlmProvider } from '../../../llm/factory.js';
+import { llmGate } from '../../../llm/gate.js';
+import { makeRateLimiter } from '../../../llm/rate-limit.js';
+import { RefineJourneysRequestSchema, UserJourney } from '../../../llm/schemas.js';
+import { JourneysRefinerService } from '../../../llm/services/journeys-refiner.service.js';
+import { sha1Hex, stableStringify } from '../../../llm/utils.js';
+import { env } from '../../env.js';
+import { rid } from '../../utils.js';
+import { completion } from '../../../llm/services/scenario-completion.js';
+
+
+
 export default function buildRoute(router: Router) {
 
-    router.delete('/projects/:projectId/workflows/:workflowId/scenarios/:scenarioId', async (req: Request, resp: Response) => {
+    router.get('/projects/:projectId/workflows/:workflowId/scenarios/:scenarioId/llm-completion', async (req: Request, resp: Response) => {
         
         let storageSession: StorageSession | undefined;
 
+        const userJourney: UserJourney | undefined = undefined;
+
         try {
             storageSession = await storageManager.getSession();
-            storageSession.beginTransaction();
 
             const projectId = req.params.projectId;
             const workflowId = Math.trunc(Number(req.params.workflowId));
             const scenarioId = Math.trunc(Number(req.params.scenarioId));
-
+            
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
                 return resp.status(404).json("project not found");
             }
-            
+
             const workflow = await workflowStorage.getById(projectId, workflowId, storageSession);
             if (workflow === undefined) {
                 return resp.status(404).json("workflow not found");
@@ -39,25 +54,19 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json("scenario not found");
             }
 
-            const workflowScenario = await workflowScenarioStorage.getById(workflowId, scenarioId, storageSession);
-            if (workflowScenario === undefined) {
-                return resp.status(404).json("workflow-scenario not found");
+            const userJourney = await userJourneyStorage.getById(projectId, scenario.userJourneyId, storageSession);
+            if (userJourney === undefined) {
+                return resp.status(404).json("userJourney not found");
             }
-            const results = await workflowScenarioStorage.deleteById(workflowScenario, storageSession);
-            if (results === false) {
-                storageSession.rollback();
-                return resp.status(500).json('Failed to delete workflow-scenario');
-            }
-            
-            storageSession.commit();
-            return resp.status(204).json();
 
+            const result = await completion(userJourney)
+
+            return resp.json(result);
+    
         } catch (err: any) {
-            storageSession?.rollback();
-            logger.error("[DELETE /projects/:projectId/workflows/:workflowId/scenarios/:scenarioId] Fatal error: %o", err);
-            return resp
-                .status(500)
-                .json(err.message || "Failed to delete workflow-scenarios");
+            // Distinguish validation vs. provider/timeout errors
+            const msg = String(err?.message || err);
+            return resp.status(500).json("LLM ERROR: " + msg);
         } finally {
             storageSession?.ends();
         }

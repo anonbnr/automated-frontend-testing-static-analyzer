@@ -22,6 +22,13 @@ export default function buildRoute(router: Router) {
         const workflowId = Math.trunc(Number(req.params.workflowId));
         const scenarioId = Math.trunc(Number(req.params.scenarioId));
 
+        if (isNaN(workflowId)) {
+                return resp.status(404).json("workflow not found");
+        }
+        if (isNaN(scenarioId)) {
+            return resp.status(404).json("scenario not found");
+        }
+
         const {
             order,
         } = req.body;
@@ -50,11 +57,7 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json("scenario not found");
             }
 
-            const result = await workflowScenarioStorage.update(workflowId, scenarioId, order, storageSession);
-            if (result === false) {
-                storageSession.rollback();
-                return resp.status(500).json('Failed to patch workflow-scenario');
-            }
+            await workflowScenarioStorage.update(workflowId, scenarioId, order, storageSession);
 
             storageSession.commit();
 

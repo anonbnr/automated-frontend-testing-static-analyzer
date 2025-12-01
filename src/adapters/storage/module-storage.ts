@@ -12,7 +12,7 @@ export async function save(projectId: string, module: ModuleInfo, storageSession
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO modules (name, projectId, filePath, imports, declarations, exports, lazy, role)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -29,7 +29,7 @@ export async function save(projectId: string, module: ModuleInfo, storageSession
         return true;
     } catch (e) {
         logger.error("Error: moduleStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
@@ -69,13 +69,13 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `DELETE FROM modules WHERE projectId=?`,
             [projectId]
         );
         return true;
     } catch (e) {
         console.log("Error: moduleStorage.getByProjectId: ", e);
-        return false;
+        throw e;
     }
 }

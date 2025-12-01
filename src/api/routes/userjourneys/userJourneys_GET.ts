@@ -26,9 +26,6 @@ export default function buildRoute(router: Router) {
             }
 
             const userJourneys = await userJourneyStorare.getAll(projectId, storageSession);
-            if (userJourneys === undefined ) { 
-                return resp.status(404).json("userJourneys not found");
-            }
             
             return resp.json(userJourneys);
 

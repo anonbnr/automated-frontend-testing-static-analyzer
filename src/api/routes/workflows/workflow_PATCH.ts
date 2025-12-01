@@ -17,7 +17,11 @@ export default function buildRoute(router: Router) {
         let storageSession: StorageSession | undefined;
 
         const projectId = req.params.projectId;
-        const workflowId = req.params.workflowId;
+        const workflowId = Math.trunc(Number(req.params.workflowId));
+
+        if (isNaN(workflowId)) {
+            return resp.status(404).json("workflow not found");
+        }
 
         const {
             name,
@@ -37,7 +41,7 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json("project not found");
             }
             
-            const workflow = await workflowStorage.getById(projectId, Math.trunc(Number(workflowId)), storageSession);
+            const workflow = await workflowStorage.getById(projectId, workflowId, storageSession);
             if (workflow === undefined) {
                 return resp.status(404).json("workflow not found");
             }
@@ -47,7 +51,7 @@ export default function buildRoute(router: Router) {
                 description,
             }
 
-            const result = await workflowStorage.update(projectId, Math.trunc(Number(workflowId)), data, storageSession);
+            const result = await workflowStorage.update(projectId, workflowId, data, storageSession);
             if (result === undefined) {
                 return resp.status(500).json("Failed to patch workflow");
             }

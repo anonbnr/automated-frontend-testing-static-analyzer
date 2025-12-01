@@ -20,7 +20,11 @@ export default function buildRoute(router: Router) {
 
             const projectId = req.params.projectId;
             const userJourneyId = req.params.journeyId;
-            const scenarioId = req.params.scenarioId;
+            const scenarioId = Math.trunc(Number(req.params.scenarioId));
+
+            if (isNaN(scenarioId)) {
+                return resp.status(404).json("scenario not found");
+            }
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
@@ -32,12 +36,12 @@ export default function buildRoute(router: Router) {
                 return resp.status(404).json("user-journey not found");
             }
             
-            const scenario = await scenarioStorage.getById(projectId, userJourneyId, Math.trunc(Number(scenarioId)), storageSession);
+            const scenario = await scenarioStorage.getById(projectId, userJourneyId, scenarioId, storageSession);
             if (scenario === undefined) {
                 return resp.status(404).json("scenario not found");
             }
             
-            const results = await scenarioStorage.deleteById(projectId, userJourneyId, Math.trunc(Number(scenarioId)), storageSession);
+            const results = await scenarioStorage.deleteById(projectId, userJourneyId, scenarioId, storageSession);
             if (results === undefined) {
                 return resp.status(500).json('Failed to delete scenario');
             }

@@ -12,7 +12,7 @@ export async function save(projectId : string, userJourney : UserJourney, storag
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO userjourneys (projectId, id, rootModule, name, projectRoot, steps, expandedSteps, path, intent, success)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -31,7 +31,7 @@ export async function save(projectId : string, userJourney : UserJourney, storag
         return true;
     } catch(e) {
         logger.error("Error: userJourneyStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
@@ -74,27 +74,30 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `DELETE FROM userjourneys WHERE projectId=?`,
             [projectId]
         );
         return true;
     } catch(e) {
         console.log("Error: userJourneyStorage.getByProjectId: ", e);
-        return false;
+        throw e;
     }
 }
 
-export async function getById(projectId: string, id: string, storageSession: StorageSession): Promise<UserJourney> {
+export async function getById(projectId: string, id: string, storageSession: StorageSession): Promise<UserJourney | undefined> {
     let dbConnection: PoolConnection = storageSession.getConnector();
 
     try {        
-        const [result] = await dbConnection.query<RowUserJourney[]>(
+        const [results] = await dbConnection.query<RowUserJourney[]>(
             `SELECT id, name, rootModule, projectRoot, steps, expandedSteps, path, intent, success FROM userjourneys WHERE id=?`,
             [id]
         );
 
-        const rowUserJourney = result[0];
+        if (results.length === 0)
+            return undefined;
+
+        const rowUserJourney = results[0];
 
         const userJourney = {
             id: rowUserJourney.id,

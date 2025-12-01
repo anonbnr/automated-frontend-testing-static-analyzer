@@ -17,7 +17,7 @@ export async function save(name : string, description : string, projectRoot : st
 
     try {
         const id = uuidv4();
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO projects (id, name, description, projectRoot, url)
                 VALUES (?, ?, ?, ?, ?)`,
             [id, name, description, projectRoot, url]
@@ -25,7 +25,7 @@ export async function save(name : string, description : string, projectRoot : st
         return id;
     } catch(e) {
         logger.error("Error: projectStorage.save: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -71,7 +71,7 @@ export async function update(id: string, name: string, description: string, proj
         return result;
     } catch(e) {
         console.log("Error: projectStorage.update: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -86,7 +86,7 @@ export async function updateScanDate(id: string, storageSession: StorageSession)
         return result;
     } catch(e) {
         console.log("Error: projectStorage.updateScanDate: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -101,7 +101,7 @@ export async function refreshUpdateAt(id: string, storageSession: StorageSession
         return result;
     } catch(e) {
         console.log("Error: projectStorage.updateScanDate: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -116,7 +116,7 @@ export async function deleteById(id: string, storageSession: StorageSession) {
         return result;
     } catch(e) {
         console.log("Error: projectStorage.deleteById: ", e);
-        return undefined;
+        throw e;
     }
 }
 

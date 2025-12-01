@@ -29,27 +29,16 @@ export default function buildRoute(router: Router) {
             }
 
             const componentRoutes = await componentRouteStorage.getAll(projectId, storageSession);
-            if (componentRoutes === undefined ) {
-                return resp.status(404).json({ error: "componentRoutes not found" });
-            }
-
             const redirectRoutes = await redirectRouteStorage.getAll(projectId, storageSession);
-            if (redirectRoutes === undefined ) {
-                return resp.status(404).json({ error: "redirectRoutes not found" });
-            }
-
-            const routeRoles: RouteRoles = await routeRoleStorage.get(projectId, storageSession);
-            if (routeRoles === undefined ) {
-                return resp.status(404).json({ error: "routeRoles not found" });
-            }
+            const routeRoles = await routeRoleStorage.getAll(projectId, storageSession);
 
             const routeMap = {
                 routes: componentRoutes,
                 redirections: redirectRoutes,
                 roles: routeRoles
             }
-            
-            return resp.json( routeMap );
+
+            return resp.json(routeMap);
 
         } catch (err: any) {
             logger.error("[GET /project/:projectId/routes] Fatal error: %o", err);

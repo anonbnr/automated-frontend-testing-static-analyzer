@@ -17,19 +17,23 @@ export default function buildRoute(router: Router) {
             storageSession = await storageManager.getSession();
 
             const projectId = req.params.projectId;
-            const workflowId = req.params.workflowId;
+            const workflowId = Math.trunc(Number(req.params.workflowId));
+
+            if (isNaN(workflowId)) {
+                return resp.status(404).json("workflow not found");
+            }
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
                 return resp.status(404).json("project not found");
             }
             
-            const workflow = await workflowStorage.getById(projectId, Math.trunc(Number(workflowId)), storageSession);
+            const workflow = await workflowStorage.getById(projectId, workflowId, storageSession);
             if (workflow === undefined) {
                 return resp.status(404).json("workflow not found");
             }
             
-            const results = await workflowStorage.deleteById(projectId, Math.trunc(Number(workflowId)), storageSession);
+            const results = await workflowStorage.deleteById(projectId, workflowId, storageSession);
             if (results === undefined) {
                 return resp.status(500).json("Failed to delete workflow");
             }

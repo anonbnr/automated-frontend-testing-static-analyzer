@@ -17,12 +17,12 @@ export default function buildRoute(router: Router) {
             storageSession = await storageManager.getSession();
             const projectId = req.params.projectId;
 
-            let results = await projectStorage.getById(projectId, storageSession);
-            if (results === undefined) {
+            const project = await projectStorage.getById(projectId, storageSession);
+            if (project === undefined) {
                 return resp.status(404).json("project not found");
             }
             
-            return resp.json(results);
+            return resp.json(project);
 
         } catch (err: any) {
             logger.error("[GET /project/:projectId] Fatal error: %o", err);

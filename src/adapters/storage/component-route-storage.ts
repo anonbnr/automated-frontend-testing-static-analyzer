@@ -15,7 +15,7 @@ export async function save(projectId : string, componentRoute : ComponentRoute, 
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO component_routes (projectId, route, module, component, loadChildren, loadComponent, pathMatch, canActivate, canActivateChild, canLoad, resolve, data)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -36,7 +36,7 @@ export async function save(projectId : string, componentRoute : ComponentRoute, 
         return true;
     } catch(e) {
         logger.error("Error: componentRouteStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 

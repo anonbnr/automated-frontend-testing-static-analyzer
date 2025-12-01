@@ -15,7 +15,7 @@ export async function save(projectId : string, roles: Record<ComponentRouteRole,
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO route_roles (projectId, root, global, shared, mapped, dead)
                 VALUES (?, ?, ?, ?, ?, ?)`,
             [
@@ -30,11 +30,11 @@ export async function save(projectId : string, roles: Record<ComponentRouteRole,
         return true;
     } catch(e) {
         logger.error("Error: routeRoleSotage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
-export async function get(projectId: string, storageSession: StorageSession): Promise<RouteRoles> {
+export async function getAll(projectId: string, storageSession: StorageSession): Promise<RouteRoles> {
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
@@ -63,13 +63,13 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `DELETE FROM route_roles WHERE projectId=?`,
             [projectId]
         );
         return true;
     } catch(e) {
         console.log("Error: routeRoleStorage.getByProjectId: ", e);
-        return false;
+        throw e;
     }
 }

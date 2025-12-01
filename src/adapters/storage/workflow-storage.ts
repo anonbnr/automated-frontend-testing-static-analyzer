@@ -26,7 +26,7 @@ export async function save(projectId: string, workflow: Workflow, storageSession
         return result.insertId;
     } catch (e) {
         logger.error("Error: WorkflowStorage.save: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -97,7 +97,7 @@ export async function update(projectId: string, id: number, data: Record<string,
         return result;
     } catch (e) {
         console.log("Error: workflowStorage.update: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -113,6 +113,6 @@ export async function deleteById(projectId: string, id: number, storageSession: 
         return result;
     } catch (e) {
         console.log("Error: workflowStorage.deleteById: ", e);
-        return undefined;
+        throw e;
     }
 }

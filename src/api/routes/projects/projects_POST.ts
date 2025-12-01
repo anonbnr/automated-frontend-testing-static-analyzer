@@ -27,8 +27,6 @@ export default function buildRoute(router: Router) {
             storageSession = await storageManager.getSession();
 
             const results = await projectStorage.save(name, description, projectRoot, url, storageSession);
-            if (results === undefined)
-                return resp.status(500).json('Failed to post project');
             
             return resp.status(200).json({id: results});
 

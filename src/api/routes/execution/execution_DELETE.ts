@@ -19,6 +19,10 @@ export default function buildRoute(router: Router) {
             
             const projectId = req.params.projectId;
             const workflowId = Math.trunc(Number(req.params.workflowId));
+
+            if (isNaN(workflowId)) {
+                return resp.status(404).json("workflow not found");
+            }
             
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
@@ -31,6 +35,8 @@ export default function buildRoute(router: Router) {
             }
 
             const workflowResults = await workflowResultStorage.getAll(workflowId, storageSession);
+
+            storageSession.beginTransaction();
 
             for (const workflowResult of workflowResults) {
                 await workflowResultStorage.deleteById(workflowResult.workflowId, workflowResult.scenarioId, storageSession);

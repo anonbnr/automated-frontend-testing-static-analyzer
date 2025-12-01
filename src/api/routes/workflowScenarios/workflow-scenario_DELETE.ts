@@ -24,6 +24,13 @@ export default function buildRoute(router: Router) {
             const workflowId = Math.trunc(Number(req.params.workflowId));
             const scenarioId = Math.trunc(Number(req.params.scenarioId));
 
+            if (isNaN(workflowId)) {
+                return resp.status(404).json("workflow not found");
+            }
+            if (isNaN(scenarioId)) {
+                return resp.status(404).json("scenario not found");
+            }
+
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
                 return resp.status(404).json("project not found");
@@ -43,11 +50,8 @@ export default function buildRoute(router: Router) {
             if (workflowScenario === undefined) {
                 return resp.status(404).json("workflow-scenario not found");
             }
-            const results = await workflowScenarioStorage.deleteById(workflowScenario, storageSession);
-            if (results === false) {
-                storageSession.rollback();
-                return resp.status(500).json('Failed to delete workflow-scenario');
-            }
+            
+            await workflowScenarioStorage.deleteById(workflowScenario, storageSession);
             
             storageSession.commit();
             return resp.status(204).json();

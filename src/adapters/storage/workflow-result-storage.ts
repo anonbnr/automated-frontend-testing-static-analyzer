@@ -29,7 +29,7 @@ export async function save(workflowResult: WorkflowResult, storageSession: Stora
         return true;
     } catch (e) {
         logger.error("Error: workflowResultStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 

@@ -12,7 +12,7 @@ export async function save(projectId : string, redirectRoute : RedirectRoute, st
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO redirect_routes (projectId, route, module, redirectTo, pathMatch)
                 VALUES (?, ?, ?, ?, ?)`,
             [
@@ -26,7 +26,7 @@ export async function save(projectId : string, redirectRoute : RedirectRoute, st
         return true;
     } catch(e) {
         logger.error("Error: redirectRouteStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
@@ -63,13 +63,13 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `DELETE FROM redirect_routes WHERE projectId=?`,
             [projectId]
         );
         return true;
     } catch(e) {
         console.log("Error: redirectRouteStorage.getByProjectId: ", e);
-        return false;
+        throw e;
     }
 }

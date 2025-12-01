@@ -23,8 +23,8 @@ export default function buildRoute(router: Router) {
         try {
             storageSession = await storageManager.getSession();
 
-            const checkProjectId = await projectStorage.getById(projectId, storageSession);
-            if (checkProjectId === undefined) {
+            const project = await projectStorage.getById(projectId, storageSession);
+            if (project === undefined) {
                 return resp.status(404).json("project not found");
             }
 
@@ -37,10 +37,7 @@ export default function buildRoute(router: Router) {
                 return resp.status(400).json(formatZodErrors(parseResult.error));
             }
 
-            const results = await projectStorage.update(projectId, name, description, projectRoot, url, storageSession);
-            if (results === undefined) {
-                return resp.status(500).json('Failed to patch project');
-            }
+            await projectStorage.update(projectId, name, description, projectRoot, url, storageSession);
 
             return resp.status(204).json();
 

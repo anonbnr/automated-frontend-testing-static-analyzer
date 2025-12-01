@@ -32,7 +32,7 @@ export async function save(projectId : string, userJourneyId: string, scenario :
         return result.insertId;
     } catch(e) {
         logger.error("Error: ScenarioStorage.save: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -151,7 +151,7 @@ export async function update(projectId: string, userJourneyId: string, id: numbe
         return result;
     } catch(e) {
         console.log("Error: scenarioStorage.update: ", e);
-        return undefined;
+        throw e;
     }
 }
 
@@ -167,6 +167,6 @@ export async function deleteById(projectId: string, userJourneyId: string, id: n
         return result;
     } catch(e) {
         console.log("Error: scenarioStorage.deleteById: ", e);
-        return undefined;
+        throw e;
     }
 }

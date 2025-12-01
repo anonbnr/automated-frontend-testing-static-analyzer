@@ -17,15 +17,12 @@ export default function buildRoute(router: Router) {
             storageSession = await storageManager.getSession();
             const projectId = req.params.projectId;
 
-            const checkProjectId = await projectStorage.getById(projectId, storageSession);
-            if (checkProjectId === undefined) {
+            const project = await projectStorage.getById(projectId, storageSession);
+            if (project === undefined) {
                 return resp.status(404).json("project not found");
             }
             
-            const results = await projectStorage.deleteById(projectId, storageSession);
-            if (results === undefined) {
-                return resp.status(500).json('Failed to delete project');
-            }
+            await projectStorage.deleteById(projectId, storageSession);
             
             return resp.status(204).json();
 

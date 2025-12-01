@@ -25,12 +25,12 @@ export default function buildRoute(router: Router) {
 
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
-                return resp.status(404).json({ error: "project not found" });
+                return resp.status(404).json("project not found");
             }
 
             const components = await componentStorage.getAll(projectId, storageSession);
             if (components === undefined ) {
-                return resp.status(404).json({ error: "components not found" });
+                return resp.status(404).json("components not found");
             }
             
             let widgets: WidgetInfo[];

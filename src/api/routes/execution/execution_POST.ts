@@ -1,6 +1,8 @@
 import { Request, Response, Router } from 'express';
 import logger from '../../../logging/logger.js';
 
+import path from 'path';
+import { env } from '../../env.js';
 import { formatZodErrors } from '../utils/schema.js';
 
 import { StorageSession } from '../../../adapters/storageManager.js';
@@ -13,6 +15,7 @@ import * as scenarioStorage from '../../../adapters/storage/scenario-storage.js'
 import * as workflowScenarioStorage from '../../../adapters/storage/workflow-scenario-storage.js';
 import * as workflowResultStorage from '../../../adapters/storage/workflow-result-storage.js';
 
+import { AnalysisProject } from '../../../models/project-info.js';
 import { UserJourney } from '../../../models/user-journeys/user-journey-info.js';
 import { WorkflowScenario } from '../../../models/workflow-scenario-info.js';
 
@@ -20,6 +23,8 @@ import { workflowScenarioSchemaPost } from '../schemas/workflow-scenario-schema.
 
 import { executeSelenium } from '../../../adapters/selenium.js';
 import { WorkflowResult } from '../../../models/workflow-result.js';
+import { Scenario } from '../../../models/scenarios/scenarios-info.js';
+import { Workflow } from '../../../models/workflows-info.js';
 
 
 export default function buildRoute(router: Router) {
@@ -30,6 +35,10 @@ export default function buildRoute(router: Router) {
 
         const projectId = req.params.projectId;
         const workflowId = Math.trunc(Number(req.params.workflowId));
+
+        if (isNaN(workflowId)) {
+            return resp.status(404).json("workflow not found");
+        }
         
         const {
             scenarioId,
@@ -75,7 +84,6 @@ export default function buildRoute(router: Router) {
                 const userJourneyId = scenario.userJourneyId;
                 
                 let userJourney = userJourneyMap.get(userJourneyId);
-
                 if (!userJourney) {
                     userJourney = await userJourneyStorage.getById(projectId, userJourneyId, storageSession);
                     if (!userJourney) {
@@ -89,14 +97,14 @@ export default function buildRoute(router: Router) {
                 try {
                     const result = await executeSelenium(scenario, userJourney, project.url);
                     if (result === true) {
-                        workflowResultStorage.save({
+                        await workflowResultStorage.save({
                         workflowId: workflow.id,
                         scenarioId: scenario.id,
                         success: true,
                     }, storageSession);
                     }
                 } catch (err: any) {
-                    workflowResultStorage.save({
+                    await workflowResultStorage.save({
                         workflowId: workflow.id,
                         scenarioId: scenario.id,
                         success: false,
@@ -107,7 +115,8 @@ export default function buildRoute(router: Router) {
             }
 
             // TODO add a route to check workflow status url
-            return resp.status(202).json({message: "Workflow accepted for processing, can check execution status at the workflowStatusUrl", workfloStatusUrl: "url/:projectId/workflows/:workflowId/execution/status"});
+            const workflowStatusUrl = env.backend.API_BASE_URL + "/:projectId/workflows/:workflowId/execution/status";
+            return resp.status(202).json({message: "Workflow accepted for processing, can check execution status at the workflowStatusUrl", workflowStatusUrl: workflowStatusUrl});
 
         } catch (err: any) {
             storageSession?.rollback();

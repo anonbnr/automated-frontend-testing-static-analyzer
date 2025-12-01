@@ -14,8 +14,6 @@ export interface ScenarioStepData {
     usersNote: string;
 }
 
-
-
 export interface ExpectedResult {
     target: {
         selector: string;

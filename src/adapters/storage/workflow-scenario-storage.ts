@@ -32,7 +32,7 @@ export async function save(workflowScenario : WorkflowScenario, storageSession: 
         return true;
     } catch(e) {
         logger.error("Error: workflowScenarioStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
@@ -125,7 +125,7 @@ export async function update(workflowId: number, scenarioId: number, newOrder: n
         }
         // Move backward the range between the current order and the new order to free the destination slot
         else {
-            const [result] = await dbConnection.query<ResultSetHeader>(
+            await dbConnection.query<ResultSetHeader>(
                 `UPDATE workflows_scenarios SET \`order\` = \`order\` - 1
                 WHERE workflowId=?
                     AND \`order\` > ?

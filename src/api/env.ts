@@ -179,6 +179,10 @@ export const env = {
         }
     },
 
+    backend: {
+        API_BASE_URL: envStr('BACKEND_API_BASE_URL', 'http://localhost:3000')
+    },
+
     // ── Express body-parser JSON limit ─────────────────────────────────────
     API_JSON_LIMIT: envStr('API_JSON_LIMIT', '10mb'),
 };

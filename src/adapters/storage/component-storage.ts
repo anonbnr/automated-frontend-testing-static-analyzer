@@ -15,7 +15,7 @@ export async function save(projectId : string, component : ComponentInfo, storag
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO components (selector, projectId, name, nestedComponents)
                 VALUES (?, ?, ?, ?)`,
             [
@@ -28,7 +28,7 @@ export async function save(projectId : string, component : ComponentInfo, storag
         return true;
     } catch(e) {
         logger.error("Error: componentStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
@@ -60,17 +60,45 @@ export async function getAll(projectId: string, storageSession: StorageSession):
     }
 }
 
+export async function getById(projectId: string, selector: string, storageSession: StorageSession): Promise<ComponentInfo | undefined> {
+    const dbConnection: PoolConnection = storageSession.getConnector();
+
+    try {
+        const [results] = await dbConnection.query<RowComponentInfo[]>(
+            `SELECT selector, name, nestedComponents FROM components WHERE projectId=? AND selector=?`,
+            [projectId, selector]
+        );
+        
+        if (results.length === 0)
+            return undefined;
+            
+        const result = results[0];
+        
+        const component = {
+            name: result.name,
+            selector: result.selector,
+            nestedComponents: JSON.parse(result.nestedComponents),
+            widgets: []
+        }
+
+        return component;
+    } catch(e) {
+        console.log("Error: componentStorage.getById: ", e);
+        throw e;
+    }
+}
+
 export async function deleteByProjectId(projectId: string, storageSession: StorageSession) {
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `DELETE FROM components WHERE projectId=?`,
             [projectId]
         );
         return true;
     } catch(e) {
         console.log("Error: componentStorage.getByProjectId: ", e);
-        return false;
+        throw e;
     }
 }

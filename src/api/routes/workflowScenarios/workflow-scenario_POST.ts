@@ -23,6 +23,10 @@ export default function buildRoute(router: Router) {
 
         const projectId = req.params.projectId;
         const workflowId = Math.trunc(Number(req.params.workflowId));
+
+        if (isNaN(workflowId)) {
+                return resp.status(404).json("workflow not found");
+        }
         
         const {
             scenarioId,
@@ -50,15 +54,18 @@ export default function buildRoute(router: Router) {
             if (scenario === undefined) {
                 return resp.status(404).json("scenario not found");
             }
+
+            let workflowScenario = await workflowScenarioStorage.getById(workflowId, scenarioId, storageSession);
+            if (workflowScenario !== undefined) {
+                return (resp.status(409).json("scenario already exists for this workflow"));
+            }
             
-            const workflowScenario: WorkflowScenario = {
+            workflowScenario = {
                 workflowId: workflowId,
                 scenarioId: scenarioId,
             }
 
-            const result = await workflowScenarioStorage.save(workflowScenario, storageSession);
-            if (result === false)
-                return resp.status(500).json('Failed to post workflow-scenario');
+            await workflowScenarioStorage.save(workflowScenario, storageSession);
 
             return resp.status(204).json();
 

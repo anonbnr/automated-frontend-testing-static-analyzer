@@ -21,6 +21,10 @@ export default function buildRoute(router: Router) {
 
             const projectId = req.params.projectId;
             const workflowId = Math.trunc(Number(req.params.workflowId));
+
+            if (isNaN(workflowId)) {
+                return resp.status(404).json("workflow not found");
+            }
             
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {

@@ -11,6 +11,7 @@ import { StorageSession } from '../../../adapters/storageManager.js';
 import * as storageManager from '../../../adapters/storageManager.js';
 
 import * as projectStorage from '../../../adapters/storage/project-storage.js';
+import * as componentStorage from '../../../adapters/storage/component-storage.js';
 import * as widgetStorage from '../../../adapters/storage/widget-storage.js';
 
 
@@ -29,6 +30,11 @@ export default function buildRoute(router: Router) {
             const project = await projectStorage.getById(projectId, storageSession);
             if (project === undefined) {
                 return resp.status(404).json("project not found");
+            }
+
+            const component = await componentStorage.getById(projectId, componentSelector, storageSession);
+            if (component === undefined) {
+                return resp.status(404).json("component not found");
             }
             
             const flatedWidgets = await widgetStorage.getByComponentSelector(projectId, componentSelector, storageSession);

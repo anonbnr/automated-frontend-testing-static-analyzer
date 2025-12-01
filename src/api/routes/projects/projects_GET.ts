@@ -16,8 +16,9 @@ export default function buildRoute(router: Router) {
         try {
             storageSession = await storageManager.getSession();
 
-            const results = await projectStorage.getAll(storageSession);
-            return resp.json(results);
+            const projects = await projectStorage.getAll(storageSession);
+            
+            return resp.json(projects);
 
         } catch (err: any) {
             logger.error("[GET /projects] Fatal error: %o", err);

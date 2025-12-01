@@ -15,7 +15,7 @@ export async function save(projectId: string, graph: AppNavigation, storageSessi
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO graphs (projectId, nodes, edges, transitions)
                 VALUES (?, ?, ?, ?)`,
             [
@@ -28,7 +28,7 @@ export async function save(projectId: string, graph: AppNavigation, storageSessi
         return true;
     } catch (e) {
         logger.error("Error: graphStorage.save: ", e);
-        return false;
+        throw e;
     }
 }
 
@@ -63,7 +63,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
     }
 }
 
-export async function get(projectId: string, storageSession: StorageSession): Promise<AppNavigation> {
+export async function get(projectId: string, storageSession: StorageSession): Promise<AppNavigation | undefined> {
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
@@ -74,6 +74,8 @@ export async function get(projectId: string, storageSession: StorageSession): Pr
 
         );
 
+        if (results.length === 0)
+            return undefined;
 
         const graph = {
             nodes: JSON.parse(results[0].nodes),
@@ -91,13 +93,13 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `DELETE FROM graphs WHERE projectId=?`,
             [projectId]
         );
         return true;
     } catch (e) {
         console.log("Error: graphStorage.getByProjectId: ", e);
-        return false;
+        throw e;
     }
 }

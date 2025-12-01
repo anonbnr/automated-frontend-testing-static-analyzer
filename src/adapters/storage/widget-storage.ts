@@ -12,7 +12,7 @@ export async function save(projectId : string, widget : WidgetInfo, componentSel
     const dbConnection: PoolConnection = storageSession.getConnector();
 
     try {
-        const [result] = await dbConnection.query<ResultSetHeader>(
+        await dbConnection.query<ResultSetHeader>(
             `INSERT INTO widgets (projectId, componentSelector, parentId, id, type, events, attributes, validationRules, triggersFormSubmission)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -30,7 +30,7 @@ export async function save(projectId : string, widget : WidgetInfo, componentSel
         return true;
     } catch(e) {
         logger.error("Error: AnalysisProject.registry.save: ", e);
-        return false;
+        throw e;
     }
 }
 

@@ -98,7 +98,7 @@ Concretely, it statically analyzes frontend codebases (with focus on Angular pro
 
 ---
 
-## 📁 Project Structure
+## 📁 Project
 ```plaintext
 automated-frontend-testing-static-analyzer/
 ├─ src/
@@ -331,26 +331,37 @@ curl http://localhost:3000/healthz
 
 ## 🔌 REST API Reference
 Each endpoint accepts and returns JSON unless stated otherwise.
+# SoftScanner Backend HTTP routes
 
-| Method   | Endpoint                                        | Description                                                               |
-| :------- | :---------------------------------------------- | :------------------------------------------------------------------------ |
-| **POST** | `/modules`                                      | Analyze the application’s modules and their roles.                        |
-| **POST** | `/components`                                   | Analyze components: templates, inputs/outputs, selectors.                 |
-| **GET**  | `/capabilities`                                 | Return server capabilities, versions, feature flags, and limits.          |
-| **POST** | `/routes`                                       | Extract routing configuration and metadata.                               |
-| **POST** | `/widgets`                                      | Extract and classify widgets from component templates.                    |
-| **POST** | `/widget-ids`                                   | Compute stable widget IDs for a component/template.                       |
-| **POST** | `/template`                                     | Template-level structural parsing.                                        |
-| **POST** | `/business-logic`                               | Discover event-to-handler connections within components.                  |
-| **POST** | `/graph`                                        | Generate a unified navigation graph across all layers.                    |
-| **POST** | `/user-journeys`                                | Infer high-level user journeys from the navigation graph.                 |
-| **POST** | `/llm/journeys/refine`                          | Refine journeys (dedupe, merge, intent rename, patch, minimal additions). |
-| **GET**  | `/llm/health`                                   | Check LLM connectivity and configuration                                  |
-| **POST** | `/actions/parse`                                | Parse a StageAction DSL string into structured actions and diagnostics.   |
-| **POST** | `/actions/infer`                                | Infer ordered StageActions from journey, graph, and widget IDs.           |
-| **POST** | `/screenshots/:analysisId/status`               | Return screenshot availability for all routes/journeys.                   |
-| **POST** | `/screenshots/:analysisId/capture`              | Launch Puppeteer capture jobs; returns status envelope.                   |
-| **GET**  | `/screenshots/:analysisId/:journeyId/:route(*)` | Serve existing screenshot PNG from disk.                                  |
+| Méthode(s)             | Route                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| **GET, POST**          | `/projects`                                                                          |
+| **GET, PATCH, DELETE** | `/projects/:projectId`                                                               |
+| **GET, POST, DELETE**  | `/projects/:projectId/analysis`                                                      |
+|                        | ├── **GET** : récupère les infos agrégées/calculées de l’analyse  (pas encore faite) |
+|                        | ├── **POST** : lance ou relance l’analyse                                            |
+|                        | └── **DELETE** : supprime l’analyse                                                  |
+| **GET**                | `/projects/:projectId/modules`                                                       |
+| **GET**                | `/projects/:projectId/components`                                                    |
+| **GET**                | `/projects/:projectId/routes`                                                        |
+| **GET**                | `/projects/:projectId/widgets`                                                       |
+| **GET**                | `/projects/:projectId/graph`                                                         |
+| **GET**                | `/projects/:projectId/user-journeys`                                                 |
+| **POST**               | `/projects/:projectId/user-journeys-llm-refining`                                    |
+|                        | └── Pas encore implémentée (elle est dans routes_old)                                |
+| **GET**                | `/projects/:projectId/user-journeys/:journeyId`                                      |
+| **GET**                | `/projects/:projectId/user-journeys/:journeyId/scenario-template`                    |
+|                        | └── Ancienne route `infer`                                                           |
+| **GET, POST**          | `/projects/:projectId/user-journeys/:journeyId/scenarios`                            |
+| **GET, PATCH, DELETE** | `/projects/:projectId/user-journeys/:journeyId/scenarios/:scenarioId`                |
+| **GET**                | `/projects/:projectId/user-journeys/:journeyId/scenarios/:scenarioId/llm-completion` |
+|                        | └── Implémentée mais résultat peu concluant, le prompt est à amélioré                |
+| **GET, POST**          | `/projects/:projectId/workflows`                                                     |
+| **GET, PATCH, DELETE** | `/projects/:projectId/workflows/:workflowId`                                         |
+| **GET, POST**          | `/projects/:projectId/workflows/:workflowId/scenarios`                               |
+| **GET, PATCH,DELETE**  | `/projects/:projectId/workflows/:workflowId/scenarios/:scenarioId`                   |
+| **GET, POST, DELETE**  | `/projects/:projectId/workflows/:workflowId/execution`                               |
+| **GET**                | `/projects/:projectId/workflows/:workflowId/execution/status`                        |
 
 ---
 

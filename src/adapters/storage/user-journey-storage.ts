@@ -65,7 +65,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 
         return userJourneys;
     } catch(e) {
-        console.log("Error: userJourneyStorage.getAll: ", e);
+        logger.error("Error: userJourneyStorage.getAll: ", e);
         throw e;
     }
 }
@@ -80,7 +80,7 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         );
         return true;
     } catch(e) {
-        console.log("Error: userJourneyStorage.getByProjectId: ", e);
+        logger.error("Error: userJourneyStorage.getByProjectId: ", e);
         throw e;
     }
 }
@@ -113,7 +113,7 @@ export async function getById(projectId: string, id: string, storageSession: Sto
 
         return userJourney;
     } catch(e) {
-        console.log("Error: userJourneyStorage.getById: ", e);
+        logger.error("Error: userJourneyStorage.getById: ", e);
         throw e;
     }
 }

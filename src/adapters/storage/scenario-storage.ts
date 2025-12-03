@@ -65,7 +65,7 @@ export async function getByUserJourney(projectId: string, userJourneyId: string,
 
         return scenarios;
     } catch(e) {
-        console.log("Error: scenarioStorage.getAll: ", e);
+        logger.error("Error: scenarioStorage.getAll: ", e);
         throw e;
     }
 }
@@ -99,7 +99,7 @@ export async function getById(projectId: string, userJourneyId: string, id: numb
 
         return scenario;
     } catch(e) {
-        console.log("Error: scenarioStorage.getById: ", e);
+        logger.error("Error: scenarioStorage.getById: ", e);
         throw e;
     }
 }
@@ -133,7 +133,7 @@ export async function get(projectId: string, id: number, storageSession: Storage
 
         return scenario;
     } catch(e) {
-        console.log("Error: scenarioStorage.getById: ", e);
+        logger.error("Error: scenarioStorage.getById: ", e);
         throw e;
     }
 }
@@ -150,7 +150,7 @@ export async function update(projectId: string, userJourneyId: string, id: numbe
         );
         return result;
     } catch(e) {
-        console.log("Error: scenarioStorage.update: ", e);
+        logger.error("Error: scenarioStorage.update: ", e);
         throw e;
     }
 }
@@ -166,7 +166,7 @@ export async function deleteById(projectId: string, userJourneyId: string, id: n
         );
         return result;
     } catch(e) {
-        console.log("Error: scenarioStorage.deleteById: ", e);
+        logger.error("Error: scenarioStorage.deleteById: ", e);
         throw e;
     }
 }

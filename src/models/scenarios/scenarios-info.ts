@@ -1,5 +1,4 @@
 import { RowDataPacket } from "mysql2";
-import { ScenarioStep } from "./scenario-steps.js";
 
 
 export type ScenarioEditedByEnum = 'analyzer' | 'llm' | 'user'

@@ -60,7 +60,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         }
         return modules;
     } catch (e) {
-        console.log("Error: moduleStorage.getAll: ", e);
+        logger.error("Error: moduleStorage.getAll: ", e);
         throw e;
     }
 }
@@ -75,7 +75,7 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         );
         return true;
     } catch (e) {
-        console.log("Error: moduleStorage.getByProjectId: ", e);
+        logger.error("Error: moduleStorage.getByProjectId: ", e);
         throw e;
     }
 }

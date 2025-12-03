@@ -58,7 +58,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         return graphs;
 
     } catch (e) {
-        console.log("Error: graphStorage.getAll: ", e);
+        logger.error("Error: graphStorage.getAll: ", e);
         throw e;
     }
 }
@@ -84,7 +84,7 @@ export async function get(projectId: string, storageSession: StorageSession): Pr
         }
         return graph;
     } catch (e) {
-        console.log("Error: graphStorage.getAll: ", e);
+        logger.error("Error: graphStorage.getAll: ", e);
         throw e;
     }
 }
@@ -99,7 +99,7 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         );
         return true;
     } catch (e) {
-        console.log("Error: graphStorage.getByProjectId: ", e);
+        logger.error("Error: graphStorage.getByProjectId: ", e);
         throw e;
     }
 }

@@ -60,7 +60,7 @@ export async function getAll(workflowId: number, storageSession: StorageSession)
 
         return workflowScenarios;
     } catch(e) {
-        console.log("Error: workflowScenarioStorage.getAll: ", e);
+        logger.error("Error: workflowScenarioStorage.getAll: ", e);
         throw e;
     }
 }
@@ -89,7 +89,7 @@ export async function getById(workflowId: number, scenarioId: number, storageSes
 
         return workflowScenario;
     } catch(e) {
-        console.log("Error: workflowScenarioStorage.getById: ", e);
+        logger.error("Error: workflowScenarioStorage.getById: ", e);
         throw e;
     }
 }
@@ -145,7 +145,7 @@ export async function update(workflowId: number, scenarioId: number, newOrder: n
         
         return true;
     } catch(e) {
-        console.log("Error: workflowScenarioStorage.update: ", e);
+        logger.error("Error: workflowScenarioStorage.update: ", e);
         throw (e);
     }
 }
@@ -172,7 +172,7 @@ export async function deleteById(workflowScenario: WorkflowScenario, storageSess
 
         return true;
     } catch(e) {
-        console.log("Error: workflowScenarioStorage.deleteById: ", e);
+        logger.error("Error: workflowScenarioStorage.deleteById: ", e);
         throw (e);
     }
 }

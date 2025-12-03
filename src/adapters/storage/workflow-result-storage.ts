@@ -59,7 +59,7 @@ export async function getAll(workflowId: number, storageSession: StorageSession)
 
         return workflowResults;
     } catch (e) {
-        console.log("Error: workflowResultStorage.getAll: ", e);
+        logger.error("Error: workflowResultStorage.getAll: ", e);
         throw e;
     }
 }
@@ -90,7 +90,7 @@ export async function getById(workflowId: number, scenarioId: number, storageSes
 
         return workflowResult;
     } catch (e) {
-        console.log("Error: workflowResultStorage.getById: ", e);
+        logger.error("Error: workflowResultStorage.getById: ", e);
         throw e;
     }
 }
@@ -107,7 +107,7 @@ export async function update(workflowId: number, scenarioId: number, data: Recor
         );
         return result;
     } catch (e) {
-        console.log("Error: workflowResultStorage.update: ", e);
+        logger.error("Error: workflowResultStorage.update: ", e);
         throw e;
     }
 }
@@ -123,7 +123,7 @@ export async function deleteById(workflowId: number, scenarioId: number, storage
         );
         return result;
     } catch (e) {
-        console.log("Error: workflowResultStorage.deleteById: ", e);
+        logger.error("Error: workflowResultStorage.deleteById: ", e);
         throw e;
     }
 }

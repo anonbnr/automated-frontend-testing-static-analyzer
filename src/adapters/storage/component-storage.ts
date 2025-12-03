@@ -55,7 +55,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         }
         return components;
     } catch(e) {
-        console.log("Error: componentStorage.getAll: ", e);
+        logger.error("Error: componentStorage.getAll: ", e);
         throw e;
     }
 }
@@ -83,7 +83,7 @@ export async function getById(projectId: string, selector: string, storageSessio
 
         return component;
     } catch(e) {
-        console.log("Error: componentStorage.getById: ", e);
+        logger.error("Error: componentStorage.getById: ", e);
         throw e;
     }
 }
@@ -98,7 +98,7 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         );
         return true;
     } catch(e) {
-        console.log("Error: componentStorage.getByProjectId: ", e);
+        logger.error("Error: componentStorage.getByProjectId: ", e);
         throw e;
     }
 }

@@ -73,7 +73,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         return componentRoutes;
 
     } catch(e) {
-        console.log("Error: componentRouteStorage.getAll: ", e);
+        logger.error("Error: componentRouteStorage.getAll: ", e);
         throw e;
     }
 }
@@ -110,7 +110,7 @@ export async function getById(projectId: string, id: string, storageSession: Sto
 
         return componentRoute;
     } catch(e) {
-        console.log("Error: componentRouteStorage.getById: ", e);
+        logger.error("Error: componentRouteStorage.getById: ", e);
         throw e;
     }
 }

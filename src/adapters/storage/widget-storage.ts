@@ -61,7 +61,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 
         return widgets;
     } catch(e) {
-        console.log("Error: widgetStorage.getAll: ", e);
+        logger.error("Error: widgetStorage.getAll: ", e);
         throw e;
     }
 }
@@ -94,7 +94,7 @@ export async function getByComponentSelector(projectId : string, componentSelect
 
         return widgets;
     } catch(e) {
-        console.log("Error: widgetStorage.getAll: ", e);
+        logger.error("Error: widgetStorage.getAll: ", e);
         throw e;
     }
 }

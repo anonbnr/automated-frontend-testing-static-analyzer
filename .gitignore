@@ -23,3 +23,5 @@ Thumbs.db
 # Data files
 *data/
 
+# Local files
+changes.md

@@ -52,7 +52,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 
         return workflows;
     } catch (e) {
-        console.log("Error: workflowStorage.getAll: ", e);
+        logger.error("Error: workflowStorage.getAll: ", e);
         throw e;
     }
 }
@@ -79,7 +79,7 @@ export async function getById(projectId: string, id: number, storageSession: Sto
 
         return workflow;
     } catch (e) {
-        console.log("Error: workflowStorage.getById: ", e);
+        logger.error("Error: workflowStorage.getById: ", e);
         throw e;
     }
 }
@@ -96,7 +96,7 @@ export async function update(projectId: string, id: number, data: Record<string,
         );
         return result;
     } catch (e) {
-        console.log("Error: workflowStorage.update: ", e);
+        logger.error("Error: workflowStorage.update: ", e);
         throw e;
     }
 }
@@ -112,7 +112,7 @@ export async function deleteById(projectId: string, id: number, storageSession: 
         );
         return result;
     } catch (e) {
-        console.log("Error: workflowStorage.deleteById: ", e);
+        logger.error("Error: workflowStorage.deleteById: ", e);
         throw e;
     }
 }

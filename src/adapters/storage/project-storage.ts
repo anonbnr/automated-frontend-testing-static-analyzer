@@ -38,7 +38,7 @@ export async function getAll(storageSession: StorageSession): Promise<AnalysisPr
         );
         return result;
     } catch(e) {
-        console.log("Error: projectStorage.getAll: ", e);
+        logger.error("Error: projectStorage.getAll: ", e);
         throw e;
     }
 }
@@ -53,7 +53,7 @@ export async function getById(id: string, storageSession: StorageSession): Promi
         );
         return result[0];
     } catch(e) {
-        console.log("Error: projectStorage.getById: ", e);
+        logger.error("Error: projectStorage.getById: ", e);
         throw e;
     }
 }
@@ -70,7 +70,7 @@ export async function update(id: string, name: string, description: string, proj
         );
         return result;
     } catch(e) {
-        console.log("Error: projectStorage.update: ", e);
+        logger.error("Error: projectStorage.update: ", e);
         throw e;
     }
 }
@@ -85,7 +85,7 @@ export async function updateScanDate(id: string, storageSession: StorageSession)
         );
         return result;
     } catch(e) {
-        console.log("Error: projectStorage.updateScanDate: ", e);
+        logger.error("Error: projectStorage.updateScanDate: ", e);
         throw e;
     }
 }
@@ -100,7 +100,7 @@ export async function refreshUpdateAt(id: string, storageSession: StorageSession
         );
         return result;
     } catch(e) {
-        console.log("Error: projectStorage.updateScanDate: ", e);
+        logger.error("Error: projectStorage.updateScanDate: ", e);
         throw e;
     }
 }
@@ -115,7 +115,7 @@ export async function deleteById(id: string, storageSession: StorageSession) {
         );
         return result;
     } catch(e) {
-        console.log("Error: projectStorage.deleteById: ", e);
+        logger.error("Error: projectStorage.deleteById: ", e);
         throw e;
     }
 }
@@ -132,7 +132,7 @@ export async function searchByParam(param: string, searchTerm: string, storageSe
 
 		return results;
 	} catch (e) {
-		console.error("Error: projectStorage.searchByParam: ", e);
+		logger.error("Error: projectStorage.searchByParam: ", e);
         throw e;	
 	}
 }

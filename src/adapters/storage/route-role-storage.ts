@@ -54,7 +54,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
         }
         return routeRoles;
     } catch(e) {
-        console.log("Error: routeRoleSotage.getAll: ", e);
+        logger.error("Error: routeRoleSotage.getAll: ", e);
         throw e;
     }
 }
@@ -69,7 +69,7 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         );
         return true;
     } catch(e) {
-        console.log("Error: routeRoleStorage.getByProjectId: ", e);
+        logger.error("Error: routeRoleStorage.getByProjectId: ", e);
         throw e;
     }
 }

@@ -54,7 +54,7 @@ export async function getAll(projectId: string, storageSession: StorageSession):
 
         return redirectRoutes;
     } catch(e) {
-        console.log("Error: redirectRouteStorage.getAll: ", e);
+        logger.error("Error: redirectRouteStorage.getAll: ", e);
         throw e;
     }
 }
@@ -69,7 +69,7 @@ export async function deleteByProjectId(projectId: string, storageSession: Stora
         );
         return true;
     } catch(e) {
-        console.log("Error: redirectRouteStorage.getByProjectId: ", e);
+        logger.error("Error: redirectRouteStorage.getByProjectId: ", e);
         throw e;
     }
 }
